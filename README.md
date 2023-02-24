@@ -27,7 +27,11 @@ cd p2p
 python publishSomePeerIPs.py
 ```
 
-Open shown URL with the browser, i.e. http://127.0.0.1:5000 
+Open shown URL with the browser, i.e. http://127.0.0.1:5000 <br>
+or in terminal
+```bash
+curl -X 'GET' 'http://192.168.178.113:8888'
+```
 
 ## Testing
 
