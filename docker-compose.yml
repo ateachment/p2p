@@ -7,4 +7,11 @@ services:
       - discovery.type=single-node
     ports:
       - 5000:5000
+  peer2:
+    image: p2p/main
+    container_name: peer2
+    environment:
+      - discovery.type=single-node
+    ports:
+      - 5001:5000
 
