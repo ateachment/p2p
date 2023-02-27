@@ -64,6 +64,16 @@ ip address
 and open host URL with browser<br>
 i.e. http://192.168.178.13:8888
 
+## Docker Compose
+
+Run docker compose with previous build image 
+```bash
+cd p2p
+docker-compose up
+```
+Open host URLs with browser with ports 5000 for peer1 and 5001 for peer2<br>
+i.e. http://192.168.178.13:5000 and http://192.168.178.13:5001
+
 
 ## Contributing
 
