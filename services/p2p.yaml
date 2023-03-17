@@ -29,6 +29,6 @@ spec:
       subdomain: p2p-service
       containers:
       - name: p2p-container
-        image: your-image:tag
+        image: ghcr.io/ateachment/p2p:main
         ports:
         - containerPort: 8080
