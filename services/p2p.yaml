@@ -1,15 +1,16 @@
+---
 apiVersion: v1
 kind: Service
 metadata:
   name: p2p-service
 spec:
   clusterIP: None
-  selector:
-    app: p2p
   ports:
   - name: http
     port: 80
     targetPort: 8080
+  selector:
+    app: p2p
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -25,10 +26,10 @@ spec:
       labels:
         app: p2p
     spec:
-      hostname: p2p-pod
-      subdomain: p2p-service
       containers:
-      - name: p2p-container
-        image: ghcr.io/ateachment/p2p:main
+      - image: ghcr.io/ateachment/p2p:main
+        name: p2p-container
         ports:
         - containerPort: 8080
+      hostname: p2p-pod
+      subdomain: p2p-service
