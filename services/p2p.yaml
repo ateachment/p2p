@@ -34,6 +34,7 @@ spec:
     spec:
       containers:
       - image: ghcr.io/ateachment/p2p:main
+        imagePullPolicy: "Always"
         name: p2p-container
         ports:
         - containerPort: 8080
