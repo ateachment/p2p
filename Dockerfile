@@ -7,7 +7,7 @@ WORKDIR /usr/src/app
 COPY . .
 
 # install python and pip
-RUN apk add --update python3 py3-pip
+RUN apk add --update python3 py3-pip curl
 
 # install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
