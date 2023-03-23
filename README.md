@@ -82,14 +82,22 @@ which was created by .github\workflows/actions.yml (CI/CD pipeline)
 kubectl apply -f https://raw.githubusercontent.com/ateachment/p2p/main/services/p2p.yaml
 ```
 
-Get IP addresses of pods
+Get IP addresses of pods (endpoints)
 ```bash
 kubectl describe service p2p-service -n p2p-namespace
 ```
-
 Call app with
 ```bash
 curl http://<pod-ip>:5000
+```
+or <br>
+Get name of pods
+```bash
+kubectl get pods -n p2p-namespace 
+```
+and call app from inside pod with
+```bash
+kubectl exec -it <name of pod> -n p2p-namespace -- curl http://localhost:5000
 ```
 
 Stop pods with

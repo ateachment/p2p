@@ -12,7 +12,6 @@ spec:
   clusterIP: None
   ports:
   - name: http
-    port: 80
     targetPort: 8080
   selector:
     app: p2p
@@ -34,7 +33,7 @@ spec:
     spec:
       containers:
       - image: ghcr.io/ateachment/p2p:main
-        imagePullPolicy: "Always"
+        imagePullPolicy: "Always"   # can result in too much traffic -> better versioning of images later
         name: p2p-container
         ports:
         - containerPort: 8080
