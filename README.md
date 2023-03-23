@@ -74,6 +74,32 @@ docker-compose up
 Open host URLs with browser with ports 5000 for peer1 and 5001 for peer2<br>
 i.e. http://192.168.178.13:5000 and http://192.168.178.13:5001
 
+## Kubernetes
+
+Run /services/p2p.yaml to deploy images from Github's Docker Container Registry ghcr.io<br>
+which was created by .github\workflows/actions.yml (CI/CD pipeline)
+```bash
+kubectl apply -f https://raw.githubusercontent.com/ateachment/p2p/main/services/p2p.yaml
+```
+
+Get IP addresses of pods
+```bash
+kubectl describe service p2p-service -n p2p-namespace
+```
+
+Call app with
+```bash
+curl http://<pod-ip>:5000
+```
+
+Stop pods with
+```bash
+kubectl delete deployment p2p-deployment -n p2p-namespace && kubectl delete service p2p-service -n p2p-namespace 
+```
+or
+```bash
+kubectl delete namespace p2p-namespace
+```
 
 ## Contributing
 
