@@ -8,25 +8,27 @@ kind: Service
 metadata:
   name: p2p-service
   namespace: p2p-namespace
+  labels:
+    app: p2p
 spec:
   clusterIP: None
   ports:
   - name: http
     port: 80
-    targetPort: 8080
   selector:
     app: p2p
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: p2p-deployment
+  name: p2p-statefulSet
   namespace: p2p-namespace
 spec:
   replicas: 3
   selector:
     matchLabels:
       app: p2p
+  serviceName: "p2p-service"
   template:
     metadata:
       labels:
@@ -37,6 +39,5 @@ spec:
         imagePullPolicy: "Always"   # can result in too much traffic -> better versioning of images later
         name: p2p-container
         ports:
-        - containerPort: 8080
-      hostname: p2p-pod
-      subdomain: p2p-service
+        - containerPort: 80
+      
