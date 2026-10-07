@@ -1,18 +1,15 @@
-FROM alpine
+FROM python:3.11-slim
 
-# set a directory for the app
 WORKDIR /usr/src/app
 
-# copy all the files to the container
-COPY . .
+# Falls curl zwingend benötigt wird, hier installieren:
+#RUN apt-get update && apt-get install -y --no-install-recommends curl \
+#    && rm -rf /var/lib/apt/lists/*
 
-# install python, pip, curl 
-RUN apk add --update python3 py3-pip curl
-
-# install dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# expose flask standard port 
-EXPOSE 5000
+COPY . .
 
-CMD ["python","./publishSomePeerIPs.py"]
+EXPOSE 5000
+CMD ["python", "./publishSomePeerIPs.py"]
