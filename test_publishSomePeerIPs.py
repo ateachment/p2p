@@ -2,7 +2,7 @@ import json
 import socket
 from publishSomePeerIPs import app
 
-def test_logout():
+def test_publish_some_peer_ips():
     response = app.test_client().get('/')
     assert response.status_code == 200
     ip = socket.gethostbyname(socket.gethostname())                 # get ip address of python running system

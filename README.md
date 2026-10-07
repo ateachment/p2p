@@ -1,118 +1,189 @@
 # Peer To Peer - P2P
-<p>Development of a Peer to peer web application with Flask for teaching purposes.</p>
+
+<p>Development of a Peer-to-Peer web application with Flask for teaching purposes.</p>
 
 Includes until now:
+
 <ul>
-<li>Web service that provides the own ip address</li>
+<li>Web service that provides its own IP address</li>
 <li>pytest file</li>
 </ul>
 
 ## Installation
 
-Clone repository
+Clone the repository:
+
 ```bash
 git clone https://github.com/ateachment/p2p.git
+cd p2p
 ```
 
-Use the package manager [pip](https://pip.pypa.io/en/stable/) to install requirements.
+Create a Python virtual environment:
+
+### Linux / macOS
 
 ```bash
-pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### Windows PowerShell
+
+```powershell
+python3 -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+Install the required Python packages:
+
+```bash
+python -m pip install -r requirements.txt
 ```
 
 ## Program start
 
+Start the Flask application:
+
 ```bash
-cd p2p
-python publishSomePeerIPs.py
+python publish_some_peer_ips.py
 ```
 
-Open shown URL with the browser, i.e. http://127.0.0.1:5000 <br>
-or in terminal
+Open the shown URL with a browser, e.g.:
+
+<http://127.0.0.1:5000>
+
+or use the terminal:
+
 ```bash
-curl -X 'GET' 'http://192.168.178.113:8888'
+curl http://127.0.0.1:5000
 ```
 
 ## Testing
 
-Start the test program with 
+Run the tests with:
+
 ```bash
-pytest testPublishSomePeerIPs.py
+python -m pytest
+```
+
+or run the specific test file:
+
+```bash
+python -m pytest test_publish_some_peer_ips.py
 ```
 
 ## Docker
 
-Build docker image based on <i>alpine</i>
+Build the Docker image based on *Alpine Linux*:
+
 ```bash
-docker build p2p -t p2p/main
+docker build -t p2p/main .
 ```
-Run docker image 
+
+Run the Docker container:
+
 ```bash
 docker run -it -p 8888:5000 p2p/main
 ```
-or in detached mode (no ip address is shown)
+
+The application can then be accessed through the Docker host:
+
+<http://127.0.0.1:8888>
+
+The container can also be started in detached mode:
+
 ```bash
-docker run -itd -p 8888:5000 p2p/main
+docker run -d -p 8888:5000 p2p/main
 ```
-Open local or docker URLs with browser<br>
-http://127.0.0.1:5000 or i.e. http://172.17.0.2:5000
-or
-get ip adress of docker host
+
+To get the IP address of the Docker host, use:
+
 ```bash
 ip address
 ```
-and open host URL with browser<br>
-i.e. http://192.168.178.13:8888
+
+The application can then be accessed through the host's IP address and port 8888, e.g.:
+
+<http://192.168.178.13:8888>
 
 ## Docker Compose
 
-Run docker compose with previous build image 
+Run Docker Compose with the previously built image:
+
 ```bash
-cd p2p
-docker-compose up
+docker compose up
 ```
-Open host URLs with browser with ports 5000 for peer1 and 5001 for peer2<br>
-i.e. http://192.168.178.13:5000 and http://192.168.178.13:5001
+
+The two peers can then be accessed through the Docker host using ports 5000 and 5001, e.g.:
+
+<http://192.168.178.13:5000>
+
+and
+
+<http://192.168.178.13:5001>
 
 ## Kubernetes
 
-Run /services/p2p.yaml to deploy images from Github's Docker Container Registry ghcr.io<br>
-which was created by .github\workflows/actions.yml (CI/CD pipeline)
+Run `services/p2p.yaml` to deploy the P2P application in Kubernetes.
+
+The Kubernetes configuration uses container images from GitHub Container Registry (`ghcr.io`). The images are created by the GitHub Actions CI/CD pipeline.
+
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/ateachment/p2p/main/services/p2p.yaml
 ```
 
-Get IP addresses of pods (endpoints)
+Get the IP addresses of the pods:
+
 ```bash
 kubectl describe service p2p-service -n p2p-namespace
 ```
-Call app with
+
+Call the application with:
+
 ```bash
 curl http://<pod-ip>:5000
 ```
-or <br>
-Get name of pods
+
+Alternatively, get the names of the pods:
+
 ```bash
-kubectl get pods -n p2p-namespace 
-```
-and call app from inside pod with
-```bash
-kubectl exec -it <name of pod> -n p2p-namespace -- curl http://localhost:5000
+kubectl get pods -n p2p-namespace
 ```
 
-Stop pods with
+The application can then be called from inside a pod:
+
 ```bash
-kubectl delete deployment p2p-deployment -n p2p-namespace && kubectl delete service p2p-service -n p2p-namespace 
+kubectl exec -it <name-of-pod> -n p2p-namespace -- curl http://localhost:5000
 ```
-or
+
+A shell can also be opened inside a pod:
+
+```bash
+kubectl exec -it <name-of-pod> -n p2p-namespace -- sh
+```
+
+The application can then be called from inside the pod:
+
+```bash
+curl http://<name-of-pod>.p2p-service:5000
+```
+
+Stop the P2P application with:
+
+```bash
+kubectl delete StatefulSet p2p-statefulset -n p2p-namespace
+kubectl delete service p2p-service -n p2p-namespace
+```
+
+Alternatively, the complete namespace can be deleted:
+
 ```bash
 kubectl delete namespace p2p-namespace
 ```
 
 ## Contributing
 
-Pull requests are welcome. For major changes, please open an issue first
-to discuss what you would like to change.
+Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
 Please make sure to update tests as appropriate.
 

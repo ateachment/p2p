@@ -6,7 +6,7 @@ import socket
 app = Flask(__name__)
 
 @app.route('/', methods=['GET'])
-def publishSomePeerIPs():
+def publish_some_peer_ips():
     ip = socket.gethostbyname(socket.gethostname())                 # get ip address of python running system
     return json.dumps({ "server ip": ip }), 200                     # 200 OK
 
