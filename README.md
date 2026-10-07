@@ -45,7 +45,7 @@ python -m pip install -r requirements.txt
 Start the Flask application:
 
 ```bash
-python publish_some_peer_ips.py
+python publishSomePeerIPs.py
 ```
 
 Open the shown URL with a browser, e.g.:
@@ -69,12 +69,12 @@ python -m pytest
 or run the specific test file:
 
 ```bash
-python -m pytest test_publish_some_peer_ips.py
+python -m pytest test_publishSomePeerIPs.py
 ```
 
 ## Docker
 
-Build the Docker image based on *Alpine Linux*:
+Build the Docker image based on *Python Slim*:
 
 ```bash
 docker build -t p2p/main .
