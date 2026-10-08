@@ -2,9 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /usr/src/app
 
-# Falls curl zwingend benötigt wird, hier installieren:
-#RUN apt-get update && apt-get install -y --no-install-recommends curl \
-#    && rm -rf /var/lib/apt/lists/*
+# install curl and clean up apt cache to reduce image size
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
