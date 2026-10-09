@@ -1,14 +1,39 @@
+networks:
+  p2p-net:
+    driver: bridge
+
 services:
+  bootstrap:
+    build: .
+    image: p2p/main
+    container_name: bootstrap
+    # Wenn der Bootstrap-Server das statische Skript nutzt:
+    command: python bootstrap_server.py 
+    ports:
+      - "5002:5000"
+    networks:
+      - p2p-net
+
   peer1:
     build: .
     image: p2p/main
     container_name: peer1
+    command: python publishSomePeerIPs.py
     ports:
-      - 5000:5000
+      - "5000:5000"
+    networks:
+      - p2p-net
+    depends_on:
+      - bootstrap
+
   peer2:
     build: .
     image: p2p/main
     container_name: peer2
+    command: python publishSomePeerIPs.py
     ports:
-      - 5001:5000
-
+      - "5001:5000"
+    networks:
+      - p2p-net
+    depends_on:
+      - bootstrap
