@@ -28,7 +28,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- Python einrichten und Tests ausführen; Pipeline bricht ab, wenn Tests fehlschlagen ---
+      # --- Python einrichten und Tests ausführen; Pipeline bricht ab, wenn Test fehlschlagen ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -39,9 +39,13 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run test script
+      - name: Run peer test script
         run: |
           python test_publishSomePeerIPs.py
+
+      - name: Run bootstrap server test script
+        run: |
+          python test_bootstrap.py
       # -------------------------------------------------
 
 
