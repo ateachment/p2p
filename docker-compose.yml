@@ -29,6 +29,7 @@ services:
         # Keine ipv4_address -> Docker zieht sich automatisch die nächste freie IP (z.B. 172.18.0.3)
     depends_on:
       - bootstrap   # peer2 startet erst, wenn bootstrap gestartet ist, damit er sich bekannte Peers vom bootstrap-Server holen kann
+      - peer1      # peer2 startet erst, wenn peer1 gestartet ist, damit er nicht dessen statische IP (172.18.0.2) erhält und es zum Adresskonflikt kommt
 
 networks:
   p2p-net:
