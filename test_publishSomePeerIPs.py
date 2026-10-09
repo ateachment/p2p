@@ -42,6 +42,6 @@ def test_sync_peers():
     assert server_ip == MY_ADDRESS, f"Erwartete IP: {MY_ADDRESS}, aber erhalten: {server_ip}"
 
     print(f"Erhaltene diff_peers: {data_post.get('diff_peers')}")
-    assert data_post.get("diff_peers") == ['172.18.0.50:5000'], \
+    assert data_post.get("diff_peers") == ["172.18.0.50:5000"], \
         f"Erwartete diff_peers: {"['172.18.0.50:5000']"}, aber erhalten: {data_post.get("diff_peers")}" \
 

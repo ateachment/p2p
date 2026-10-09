@@ -28,7 +28,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- Python einrichten und Tests ausführen; Pipeline bricht ab, wenn Test fehlschlagen ---
+      # --- Python einrichten und Tests ausführen; Pipeline bricht ab, wenn Test fehlschlaegt ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
