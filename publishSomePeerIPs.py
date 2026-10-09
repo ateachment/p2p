@@ -56,7 +56,7 @@ def publish_some_peer_ips():
     return json.dumps({ 
         "peer ip": ip, 
         "known_peers": list(known_peers) 
-    }), 200  # 200 OK
+    }) + "\n", 200  # 200 OK
 
 if __name__ == '__main__':
     # Bootstrap-Funktion direkt beim Start ausführen, damit der peer seine bekannten Peers hat, bevor er Anfragen beantwortet.
