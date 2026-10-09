@@ -1,39 +1,34 @@
-networks:
-  p2p-net:
-    driver: bridge
-
 services:
   bootstrap:
     build: .
     image: p2p/main
     container_name: bootstrap
-    # Wenn der Bootstrap-Server das statische Skript nutzt:
-    command: python bootstrap_server.py 
-    ports:
-      - "5002:5000"
+    command: python bootstrap_server.py
     networks:
-      - p2p-net
+      p2p-net:
+        ipv4_address: 172.18.0.10  # Fester Anker / DNS-Seed
 
   peer1:
     build: .
     image: p2p/main
     container_name: peer1
     command: python publishSomePeerIPs.py
-    ports:
-      - "5000:5000"
     networks:
-      - p2p-net
-    depends_on:
-      - bootstrap
+      p2p-net:
+        ipv4_address: 172.18.0.2  # Fester Peer für deterministische Tests, wird vom bootstrap-Server als bekanntes Peer veröffentlicht
 
   peer2:
     build: .
     image: p2p/main
     container_name: peer2
     command: python publishSomePeerIPs.py
-    ports:
-      - "5001:5000"
     networks:
-      - p2p-net
-    depends_on:
-      - bootstrap
+      p2p-net:
+        # Keine ipv4_address -> Docker zieht sich automatisch die nächste freie IP (z.B. 172.18.0.3)
+
+networks:
+  p2p-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
