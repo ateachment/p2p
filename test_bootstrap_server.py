@@ -1,5 +1,5 @@
 import json
-from bootstrap import app
+from bootstrap_server import app
 
 def test_get_peers():
     # Test-Client des Bootstrap-Servers nutzen
@@ -19,4 +19,3 @@ def test_get_peers():
     peers = data["peers"]
     assert "172.18.0.2:5000" in peers
     assert "172.18.0.99:5000" in peers
-    

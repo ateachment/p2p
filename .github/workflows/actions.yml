@@ -45,7 +45,7 @@ jobs:
 
       - name: Run bootstrap server test script
         run: |
-          python test_bootstrap.py
+          python test_bootstrap_server.py
       # -------------------------------------------------
 
 
