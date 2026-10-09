@@ -16,6 +16,8 @@ services:
     networks:
       p2p-net:
         ipv4_address: 172.18.0.2  # Fester Peer für deterministische Tests, wird vom bootstrap-Server als bekanntes Peer veröffentlicht
+    depends_on:
+      - bootstrap   # peer1 startet erst, wenn bootstrap gestartet ist, damit er sich bekannte Peers vom bootstrap-Server holen kann
 
   peer2:
     build: .
@@ -25,6 +27,8 @@ services:
     networks:
       p2p-net:
         # Keine ipv4_address -> Docker zieht sich automatisch die nächste freie IP (z.B. 172.18.0.3)
+    depends_on:
+      - bootstrap   # peer2 startet erst, wenn bootstrap gestartet ist, damit er sich bekannte Peers vom bootstrap-Server holen kann
 
 networks:
   p2p-net:
