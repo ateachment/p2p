@@ -1,6 +1,8 @@
 services:
   bootstrap:
     build: .
+    environment:
+      - PYTHONUNBUFFERED=1
     image: p2p/main
     container_name: bootstrap
     command: python bootstrap_server.py
@@ -10,6 +12,8 @@ services:
 
   peer1:
     build: .
+    environment:
+      - PYTHONUNBUFFERED=1
     image: p2p/main
     container_name: peer1
     command: python publishSomePeerIPs.py
