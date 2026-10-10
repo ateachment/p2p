@@ -113,45 +113,49 @@ def background_sync_loop():
     MAX_JITTER = 3   # Sekunden, um die Intervalle zufällig zu variieren, damit nicht alle Peers gleichzeitig syncen
 
     jitter = random.uniform(0, MAX_JITTER)  # Optional: Zufällige Verzögerung, um gleichzeitige Syncs aller peers beim Start zu vermeiden
-    while True:
-        time.sleep(INTERVAL + jitter)  # Alle INTERVAL Sekunden syncen (Test)
-        if not known_peers:
-            continue
+    try:
+        while True:
+            time.sleep(INTERVAL + jitter)  # Alle INTERVAL Sekunden syncen (Test)
+            if not known_peers:
+                continue
 
-        # 1 bis maximal 2 zufällige Peers auswählen
-        peers_list = list(known_peers)
-        # shuffle mischt die Liste durch, danach nehmen wir z.B. die ersten 2 (oder weniger, falls die Liste kleiner ist)
-        random.shuffle(peers_list)
-        target_peers = peers_list[:1]   # Hier kann man die Anzahl der Peers anpassen, die man gleichzeitig syncen möchte (hier 1 Peer)
-            
-        for target_peer in list(target_peers):  # Kopie der Liste, da wir sie während der Iteration ändern könnten
-            if target_peer == MY_ADDRESS:
-                continue  # Eigene Adresse überspringen
-            
-            print(f"[BACKGROUND] Starte Sync mit {target_peer}...")
-            try:
-                payload = {"peers": [MY_ADDRESS] + list(known_peers)}
-                response = requests.post(f"http://{target_peer}/sync/peers", json=payload, timeout=3)
+            # 1 bis maximal 2 zufällige Peers auswählen
+            peers_list = list(known_peers)
+            # shuffle mischt die Liste durch, danach nehmen wir z.B. die ersten 2 (oder weniger, falls die Liste kleiner ist)
+            random.shuffle(peers_list)
+            target_peers = peers_list[:1]   # Hier kann man die Anzahl der Peers anpassen, die man gleichzeitig syncen möchte (hier 1 Peer)
                 
-                if response.status_code == 200:
-                    data = response.json()
-                    remote_peers = data.get("diff_peers", [])
-                    # Zurück-Mergen
-                    for p in remote_peers:
-                        if p not in known_peers and p != MY_ADDRESS:
-                            known_peers.add(p)
-                    print(f"[BACKGROUND] Sync erfolgreich. Aktuelle Peers: {list(known_peers)}")
-                else:
-                    print(f"[BACKGROUND] Fehler vom Peer {target_peer}: Status {response.status_code}")
-            except Exception as e:
+            for target_peer in list(target_peers):  # Kopie der Liste, da wir sie während der Iteration ändern könnten
+                if target_peer == MY_ADDRESS:
+                    continue  # Eigene Adresse überspringen
                 
-                peer_failure_counts[target_peer] = peer_failure_counts.get(target_peer, 0) + 1
-                print(f"[BACKGROUND] Konnte Peer {target_peer} nicht erreichen: {e} (Fehleranzahl: {peer_failure_counts[target_peer]})")
-                if peer_failure_counts[target_peer] >= MAX_FAILURES:
-                    known_peers.remove(target_peer)
-                    del peer_failure_counts[target_peer]
-                    print(f"[BACKGROUND] Peer {target_peer} nach {MAX_FAILURES} Fehlversuchen entfernt. Aktuelle Peers: {list(known_peers)}")
-        print(f"[BACKGROUND] Sync-Durchgang abgeschlossen. Aktuelle Peers: {list(known_peers)}")
+                print(f"[BACKGROUND] Starte Sync mit {target_peer}...")
+                try:
+                    payload = {"peers": [MY_ADDRESS] + list(known_peers)}
+                    response = requests.post(f"http://{target_peer}/sync/peers", json=payload, timeout=3)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        remote_peers = data.get("diff_peers", [])
+                        # Zurück-Mergen
+                        for p in remote_peers:
+                            if p not in known_peers and p != MY_ADDRESS:
+                                known_peers.add(p)
+                        print(f"[BACKGROUND] Sync erfolgreich. Aktuelle Peers: {list(known_peers)}")
+                    else:
+                        print(f"[BACKGROUND] Fehler vom Peer {target_peer}: Status {response.status_code}")
+                except Exception as e:
+                    
+                    peer_failure_counts[target_peer] = peer_failure_counts.get(target_peer, 0) + 1
+                    print(f"[BACKGROUND] Konnte Peer {target_peer} nicht erreichen: {e} (Fehleranzahl: {peer_failure_counts[target_peer]})")
+                    if peer_failure_counts[target_peer] >= MAX_FAILURES:
+                        known_peers.remove(target_peer)
+                        del peer_failure_counts[target_peer]
+                        print(f"[BACKGROUND] Peer {target_peer} nach {MAX_FAILURES} Fehlversuchen entfernt. Aktuelle Peers: {list(known_peers)}")
+            print(f"[BACKGROUND] Sync-Durchgang abgeschlossen. Aktuelle Peers: {list(known_peers)}")
+    except Exception as e:
+        print(f"[BACKGROUND CRITICAL ERROR] {e}", flush=True)
+
 
 
 if __name__ == '__main__':
