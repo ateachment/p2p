@@ -23,10 +23,10 @@ services:
 
   peer2:
     build: .
-    image: ghcr.io/ateachment/p2p:latest  # Container kann mit pull gestartet werden, ohne dass sie den Code selbst bauen müssen
     environment:
       - PYTHONUNBUFFERED=1   # Damit die Logs in Echtzeit in der Konsole erscheinen und Ausgaben des Threads in Docker erscheinen                   
-    image: ghcr.io/ateachment/p2p:latest
+    image: ghcr.io/ateachment/p2p:latest  # Container kann mit pull gestartet werden, ohne dass sie den Code selbst bauen müssen
+    environment:
     container_name: peer2
     command: python publishSomePeerIPs.py
     networks:
