@@ -2,7 +2,7 @@ services:
   bootstrap:
     build: .
     environment:
-      - PYTHONUNBUFFERED=1
+      - PYTHONUNBUFFERED=1   # Damit die Logs in Echtzeit in der Konsole erscheinen und Ausgaben im Thread erscheinen
     image: p2p/main
     container_name: bootstrap
     command: python bootstrap_server.py
