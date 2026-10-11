@@ -1,7 +1,7 @@
 services:
   bootstrap:
     build: .
-    image: ghcr.io/ateachment/p2p:blockchain  # Container kann mit pull gestartet werden, ohne dass sie den Code selbst bauen müssen
+    image: ghcr.io/ateachment/p2p:feature-blockchain  # Container kann mit pull gestartet werden, ohne dass sie den Code selbst bauen müssen
     container_name: bootstrap
     command: python bootstrap_server.py
     networks:
@@ -12,7 +12,7 @@ services:
     build: .
     environment:
       - PYTHONUNBUFFERED=1   # Damit die Logs in Echtzeit in der Konsole erscheinen und Ausgaben des Threads in Docker erscheinen                   
-    image: ghcr.io/ateachment/p2p:blockchain  # Container kann mit pull gestartet werden, ohne dass sie den Code selbst bauen müssen
+    image: ghcr.io/ateachment/p2p:feature-blockchain  # Container kann mit pull gestartet werden, ohne dass sie den Code selbst bauen müssen
     container_name: peer1
     command: python blockchain_node.py
     networks:
@@ -25,7 +25,7 @@ services:
     build: .
     environment:
       - PYTHONUNBUFFERED=1   # Damit die Logs in Echtzeit in der Konsole erscheinen und Ausgaben des Threads in Docker erscheinen                   
-    image: ghcr.io/ateachment/p2p:blockchain  # Container kann mit pull gestartet werden, ohne dass sie den Code selbst bauen müssen
+    image: ghcr.io/ateachment/p2p:feature-blockchain  # Container kann mit pull gestartet werden, ohne dass sie den Code selbst bauen müssen
     container_name: peer2
     command: python blockchain_node.py
     networks:
