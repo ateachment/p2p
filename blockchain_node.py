@@ -73,7 +73,7 @@ class Blockchain:
     def new_block(self, proof, previous_hash, timestamp=None):
         """Erstellt einen neuen Block mit Index 0, 1, 2..."""
         block = Block(
-            index=len(self.chain) + 1, 
+            index=len(self.chain), 
             transactions=list(self.current_transactions),
             proof=proof,
             previous_hash=previous_hash,
@@ -119,7 +119,7 @@ class Blockchain:
         """Eingefrorener Proof-of-Work auf Basis des Block-Headers."""
         previous_hash = last_block.hash()
         
-        index = len(self.chain) + 1
+        index = len(self.chain)
         timestamp = time.time()
         
         proof = 0

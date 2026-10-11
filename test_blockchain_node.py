@@ -156,8 +156,8 @@ def test_mine_block(client):
     assert response.status_code == 200
     data = json.loads(response.data)
     
-    # Der neue Block muss Index 2 haben (nach dem Genesis-Block)
-    assert data['index'] == 2
+    # Der neue Block muss Index 1 haben (nach dem Genesis-Block)
+    assert data['index'] == 1
     # Transaktionen sollten die vorherige User-Transaktion + die Miner-Belohnung enthalten
     assert len(data['transactions']) == 2
     assert data['block_hash'].startswith("0000"), f"Der Block-Hash {data['block_hash']} hat keine 4 führenden Nullen!"
