@@ -20,10 +20,27 @@ MY_ADDRESS = f"{MY_IP}:{MY_PORT}"
 @pytest.fixture(autouse=True)
 def reset_state():
     """Setzt globale Variablen vor jedem Test zurück, um Seiteneffekte zu vermeiden."""
+    # 1. Netzwerk-Peers leeren
     blockchain_node.known_peers = set()
+    
+    # 2. Peer-Fehlerzähler zurücksetzen (falls global definiert)
     if hasattr(blockchain_node, "peer_failure_counts"):
         blockchain_node.peer_failure_counts.clear()
+        
+    # 3. Blockchain-Instanz auf den Genesis-Block zurücksetzen
+    blockchain_node.blockchain = blockchain_node.Blockchain()
+
     yield
+
+@pytest.fixture
+def client():
+    """Erstellt einen Flask-Testclient für die Endpunkte."""
+    app.config['TESTING'] = True
+    with app.test_client() as client:
+        yield client
+
+
+# Testfälle für p2p-Funktionalität
 
 def test_publish_some_peer_ips():
     # Test-Client von Flask nutzen, um den Endpunkt aufzurufen
@@ -103,3 +120,50 @@ def test_background_sync_failure_removes_peer():
     assert "172.18.0.99:5000" not in blockchain_node.known_peers
     assert len(blockchain_node.known_peers) == 0
 
+
+# Testfälle für Blockchain-Endpunkte
+
+def test_initial_chain(client):
+    """Testet, ob die Kette beim Start korrekt den Genesis-Block enthält."""
+    response = client.get('/chain')
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['length'] == 1
+    assert data['chain'][0]['index'] == 1
+
+def test_new_transaction(client):
+    """Testet das Hinzufügen einer neuen Transaktion."""
+    response = client.post('/transactions/new', json={
+        'sender': 'Alice',
+        'recipient': 'Bob',
+        'amount': 50
+    })
+    assert response.status_code == 201
+    data = json.loads(response.data)
+    assert 'Transaktion' in data['message']
+
+def test_mine_block(client):
+    """Testet das Mining eines neuen Blocks inklusive Transaktionen und Belohnung."""
+    # Erst eine Transaktion erzeugen
+    client.post('/transactions/new', json={
+        'sender': 'Alice',
+        'recipient': 'Bob',
+        'amount': 25
+    })
+    
+    # Block minen
+    response = client.get('/mine')
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    
+    # Der neue Block muss Index 2 haben (nach dem Genesis-Block)
+    assert data['index'] == 2
+    # Transaktionen sollten die vorherige User-Transaktion + die Miner-Belohnung enthalten
+    assert len(data['transactions']) == 2
+
+def test_consensus_resolve(client):
+    """Testet den Konsens-Endpunkt, wenn keine anderen Peers da sind."""
+    response = client.get('/nodes/resolve')
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert 'auf dem neuesten Stand' in data['message']
