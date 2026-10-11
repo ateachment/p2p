@@ -1,4 +1,4 @@
-# File:publishSomePeerIPs.py
+# File: blockchain_node.py
 # Comment: This file is used to publish the IP address of the peer running this code. It is used by the other peers to connect to this peer.
 
 import random

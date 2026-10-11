@@ -11,4 +11,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 EXPOSE 5000
-CMD ["python", "./publishSomePeerIPs.py"]  # Fallback, wird überschrieben durch docker-compose.yml, um den Bootstrap-Server zu starten
+CMD ["python", "./blockchain_node.py"]  # Fallback, wird überschrieben durch docker-compose.yml, um den Bootstrap-Server zu starten

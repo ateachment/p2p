@@ -35,7 +35,7 @@ jobs:
       # 4. Peer-Logik-Tests ausführen – bricht die Pipeline bei Fehlern ab
       - name: Run peer test script
         run: |
-          python test_publishSomePeerIPs.py
+          python test_blockchain_node.py
 
       # 5. Bootstrap-Server-Tests ausführen – stellt sicher, dass die Basisdaten stimmen
       - name: Run bootstrap server test script
