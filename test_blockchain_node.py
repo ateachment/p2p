@@ -129,7 +129,7 @@ def test_initial_chain(client):
     assert response.status_code == 200
     data = json.loads(response.data)
     assert data['length'] == 1
-    assert data['chain'][0]['index'] == 1
+    assert data['chain'][0]['index'] == 0
 
 def test_new_transaction(client):
     """Testet das Hinzufügen einer neuen Transaktion."""
@@ -160,6 +160,7 @@ def test_mine_block(client):
     assert data['index'] == 2
     # Transaktionen sollten die vorherige User-Transaktion + die Miner-Belohnung enthalten
     assert len(data['transactions']) == 2
+    assert data['block_hash'].startswith("0000"), f"Der Block-Hash {data['block_hash']} hat keine 4 führenden Nullen!"
 
 def test_consensus_resolve(client):
     """Testet den Konsens-Endpunkt, wenn keine anderen Peers da sind."""

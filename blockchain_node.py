@@ -4,7 +4,6 @@
 import random
 import threading
 import time
-from time import time as timestamp_fn
 
 from flask import Flask, request, Response
 import hashlib
@@ -32,28 +31,55 @@ known_peers = set()
 BOOTSTRAP_URLS = ["http://localhost:5000", "http://bootstrap:5000", "http://nonExistent:5000"]  
 
 
+class Block:
+    def __init__(self, index, transactions, proof, previous_hash, timestamp=None):
+        self.index = index
+        self.timestamp = timestamp or time.time()
+        self.transactions = transactions
+        self.proof = proof
+        self.previous_hash = previous_hash
+
+    def to_dict(self):
+        """Konvertiert den Block in ein sortiertes Dictionary für deterministisches Hashen und JSON."""
+        return {
+            'index': self.index,
+            'timestamp': self.timestamp,
+            'transactions': self.transactions,
+            'proof': self.proof,
+            'previous_hash': self.previous_hash
+        }
+
+    def hash(self):
+        """Berechnet den SHA-256-Hash dieses spezifischen Block-Headers."""
+        block_string = json.dumps(self.to_dict(), sort_keys=True).encode()
+        return hashlib.sha256(block_string).hexdigest()
+
 class Blockchain:
     def __init__(self):
         self.chain = []
         self.current_transactions = []
         
         # Den allerersten Block erstellen (Genesis-Block)
-        # Ein Startwert (proof=100) und ein Start-Hash (previous_hash='1')
-        self.new_block(previous_hash='1', proof=100)
+        # Ein Startwert (proof=100) und ein Start-Hash (previous_hash='0') werden verwendet, um die Kette zu initialisieren.
+        # Genesis-Block erstellen (Index 0, Vorgänger-Hash "0")
+        genesis_block = Block(
+            index=0,
+            transactions=[],
+            proof=100,
+            previous_hash="0"
+        )
+        self.chain.append(genesis_block)
 
-    def new_block(self, proof, previous_hash=None):
-        """
-        Erstellt einen neuen Block und fügt ihn der Kette hinzu.
-        """
-        block = {
-            'index': len(self.chain) + 1,
-            'timestamp': timestamp_fn(),
-            'transactions': self.current_transactions,
-            'proof': proof,   # Die gefundene Lösungszahl, so dass der Hash des Blocks die Schwierigkeit erfüllt (hier 4 führende Nullen)
-            'previous_hash': previous_hash or self.hash(self.chain[-1]),
-        }
-
-        # Die transaktionsliste für den nächsten Block zurücksetzen
+    def new_block(self, proof, previous_hash, timestamp=None):
+        """Erstellt einen neuen Block mit Index 0, 1, 2..."""
+        block = Block(
+            index=len(self.chain) + 1, 
+            transactions=list(self.current_transactions),
+            proof=proof,
+            previous_hash=previous_hash,
+            timestamp=timestamp
+        )
+        
         self.current_transactions = []
         self.chain.append(block)
         return block
@@ -67,42 +93,45 @@ class Blockchain:
             'recipient': recipient,
             'amount': amount,
         })
-        return self.last_block['index'] + 1
+        return self.last_block.index + 1
 
     @staticmethod
     def hash(block):
-        """
-        Erstellt einen SHA-256-Hash eines Blocks.
-        Wichtig: sort_keys=True stellt sicher, dass das JSON immer exakt 
-        gleich formatiert ist, egal in welcher Reihenfolge die Keys erstellt wurden.
-        """
-        block_string = json.dumps(block, sort_keys=True).encode()
-        return hashlib.sha256(block_string).hexdigest()
+        """Statische Hilfsmethode für Kompatibilität."""
+        return block.hash()
 
     @property
     def last_block(self):
         return self.chain[-1]
 
-    def proof_of_work(self, last_proof): # Arbeitsnachweis 
-        """
-        Einfacher Proof-of-Work-Algorithmus:
-        - Finde eine Zahl 'proof', sodass sha256(last_proof * proof) mit 4 Nullen beginnt ("0000").
-        - Je mehr Nullen, desto schwieriger wird es (Rechenaufwand).
-        """
+    def valid_proof(self, index, timestamp, proof, previous_hash):
+        """Prüft, ob der simulierte Block die Schwierigkeit (4 führende Nullen) erfüllt."""
+        test_block = Block(
+            index=index,
+            transactions=list(self.current_transactions),
+            proof=proof,
+            previous_hash=previous_hash,
+            timestamp=timestamp
+        )
+        return test_block.hash()[:4] == "0000"
+
+    def proof_of_work(self, last_block):
+        """Eingefrorener Proof-of-Work auf Basis des Block-Headers."""
+        previous_hash = last_block.hash()
+        
+        index = len(self.chain) + 1
+        timestamp = time.time()
+        
         proof = 0
-        while self.valid_proof(last_proof, proof) is False:
+        while not self.valid_proof(index, timestamp, proof, previous_hash):
             proof += 1
-        return proof
+
+        return proof, timestamp
 
     @staticmethod
-    def valid_proof(last_proof, proof):
-        """
-        Validiert den Proof: Beginnt der Hash aus vorigem Proof und aktuellem Proof mit '0000'?
-        """
-        guess = f'{last_proof}{proof}'.encode()
-        guess_hash = hashlib.sha256(guess).hexdigest()
-        return guess_hash[:4] == "0000"
-
+    def hash(block):
+        """Statische Hilfsmethode für Kompatibilität."""
+        return block.hash()
     def valid_chain(self, chain):
         """
         Prüft, ob eine fremde Blockchain gültig ist.
@@ -316,12 +345,12 @@ def consensus():
     if replaced:
         response = {
             'message': 'Unsere Kette wurde durch eine längere ersetzt!',
-            'new_chain': blockchain.chain
+            'new_chain': [block.to_dict() for block in blockchain.chain]
         }
     else:
         response = {
             'message': 'Unsere Kette ist bereits auf dem neuesten Stand.',
-            'chain': blockchain.chain
+            'chain': [block.to_dict() for block in blockchain.chain]
         }
 
     return json.dumps(response), 200
@@ -341,7 +370,7 @@ def new_transaction():
 
     # Transaktion zur Liste hinzufügen
     index = blockchain.new_transaction(values['sender'], values['recipient'], values['amount'])
-    return json.dumps({'message': f'Transaktion wird zu Block {index} hinzugefügt'}), 201
+    return json.dumps({'message': f'Transaktion wird zu Block {index} hinzugefuegt'}) + "\n", 201
 
 """
     Mining-Endpoint: Führt den Proof-of-Work aus, erstellt eine neue Transaktion für die Mining-Belohnung und fügt einen neuen Block hinzu.
@@ -351,8 +380,8 @@ def new_transaction():
 def mine():
     # 1. Den Proof-of-Work für den letzten Block berechnen
     last_block = blockchain.last_block
-    last_proof = last_block['proof']
-    proof = blockchain.proof_of_work(last_proof)
+
+    proof, block_timestamp = blockchain.proof_of_work(last_block)
 
     # 2. Belohnung für den Miner gutschreiben (Absender "0" symbolisiert das System)
     blockchain.new_transaction(
@@ -361,18 +390,24 @@ def mine():
         amount=1,
     )
 
-    # 3. Den neuen Block der Kette hinzufügen
-    previous_hash = blockchain.hash(last_block)
-    block = blockchain.new_block(proof, previous_hash)
+    # 3. JETZT den Proof-of-Work berechnen (auf Basis ALLER Transaktionen inkl. Belohnung)
+    proof, block_timestamp = blockchain.proof_of_work(last_block)
+
+    # 4. Neuen Block erstellen
+    previous_hash = last_block.hash()
+    block = blockchain.new_block(proof, previous_hash, timestamp=block_timestamp)
+
 
     response = {
         'message': "Neuer Block erfolgreich gemined!",
-        'index': block['index'],
-        'transactions': block['transactions'],
-        'proof': block['proof'],
-        'previous_hash': block['previous_hash'],
+        'index': block.index,           # .index statt ['index']
+        'timestamp': block.timestamp,   # .timestamp statt ['timestamp']
+        'transactions': block.transactions, # .transactions statt ['transactions']
+        'proof': block.proof,           # .proof statt ['proof']
+        'previous_hash': block.previous_hash, # .previous_hash statt ['previous_hash']
+        'block_hash': block.hash()      # Direkt die Block-Hash-Methode nutzen
     }
-    return json.dumps(response), 200
+    return json.dumps(response) + "\n", 200
 
 """
     Chain-Endpoint: Gibt die gesamte Blockchain zurück.
@@ -381,10 +416,10 @@ def mine():
 @app.route('/chain', methods=['GET'])
 def full_chain():
     response = {
-        'chain': blockchain.chain,
+        'chain': [block.to_dict() for block in blockchain.chain], # Wichtig: .to_dict() aufrufen!
         'length': len(blockchain.chain),
     }
-    return json.dumps(response), 200
+    return json.dumps(response) + "\n", 200
 
 
 if __name__ == '__main__':
