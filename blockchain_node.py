@@ -425,7 +425,8 @@ Rückgabe: JSON mit einer Bestätigungsmeldung
 """
 @app.route('/nodes/receive_block', methods=['POST'])
 def receive_block():
-
+    if DEBUG:
+        print(f"[RECEIVE BLOCK] Eingehender Block: {request.get_json()}")
     values = request.get_json()
     
     required = ['index', 'timestamp', 'transactions', 'proof', 'previous_hash']
@@ -457,6 +458,8 @@ def receive_block():
         if replaced:
             return json_response({'message': 'Kette durch Konfliktloesung aktualisiert.'}), 200
 
+    if DEBUG:
+        print(f"[RECEIVE BLOCK] Block abgelehnt: Ungültig oder veraltet. Eingehender Block: {incoming_block.to_dict()}, Letzter Block: {last_block.to_dict()}")
     return json_response({'message': 'Block abgelehnt (Ungueltig oder veraltet).'}), 400
 
 
