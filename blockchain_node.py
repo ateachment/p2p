@@ -153,6 +153,8 @@ class Blockchain:
         for node in target_peers:
             try:
                 url = f'http://{node}/nodes/receive_block'
+                if DEBUG:
+                    print(f"[DISTRIBUTE BLOCK] Sende an: {url}")
                 payload = block.to_dict()
                 requests.post(url, json=payload, timeout=1.5)
             except requests.exceptions.RequestException:
