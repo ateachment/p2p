@@ -29,6 +29,14 @@ if DEBUG:
 # Lokale Liste für bekannte Peers
 known_peers = set()
 
+# Funktion, um zufällige Peers auszuwählen
+def choose_random_peers(n=1):
+    # n zufällige Peers auswählen (oder weniger, falls die Liste kleiner ist, ca. 1-2 Peers pro Sync-Durchgang)
+    peers_list = list(known_peers)
+    # shuffle mischt die Liste durch, danach nehmen wir z.B. die ersten n (oder weniger, falls die Liste kleiner ist)
+    random.shuffle(peers_list)
+    return peers_list[:n]   # Hier kann man die Anzahl der Peers anpassen, die man gleichzeitig syncen möchte
+
 # Hier die URL(s) der Bootstrap-Server hardcodiert eintragen, die beim Start abgefragt werden sollen.
 # Sie werden mit versioniert, um Missbrauch zu verhindern. Die Peers können dann die bekannten Peers an andere Peers weitergeben, 
 # die diese dann in ihrer Liste aufnehmen und die dann ihre anderen Peers zurückgeben.
@@ -152,9 +160,7 @@ class Blockchain:
                 print(f"[DISTRIBUTE BLOCK] keine Peers verfügbar.")
             return
 
-        # Wähle z. B. maximal 2-3 zufällige Peers aus
-        sample_size = min(len(known_peers), 2)
-        target_peers = random.sample(known_peers, sample_size)
+        target_peers = choose_random_peers(n=1)  # Wähle 1 zufällige Peers aus
 
         for target_peer in target_peers:
             try:
@@ -376,11 +382,7 @@ def background_sync_loop():
             if not known_peers:
                 continue
 
-            # 1 bis maximal 2 zufällige Peers auswählen
-            peers_list = list(known_peers)
-            # shuffle mischt die Liste durch, danach nehmen wir z.B. die ersten 2 (oder weniger, falls die Liste kleiner ist)
-            random.shuffle(peers_list)
-            target_peers = peers_list[:1]   # Hier kann man die Anzahl der Peers anpassen, die man gleichzeitig syncen möchte (hier 1 Peer)
+            target_peers = choose_random_peers(n=1)   # Hier kann man die Anzahl der Peers anpassen, die man gleichzeitig syncen möchte (hier 1 Peer)
                 
             for target_peer in list(target_peers):  # Kopie der Liste, da wir sie während der Iteration ändern könnten
                 if target_peer == MY_ADDRESS:
