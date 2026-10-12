@@ -145,21 +145,20 @@ class Blockchain:
         if DEBUG:
             print(f"[DISTRIBUTE BLOCK] wurde aufgerufen mit parameter block: {block.to_dict()}")
 
-        neighbors = list(getattr(self, 'nodes', set()))
         if DEBUG:
-            print(f"[DISTRIBUTE BLOCK] verfügbare Nachbarn: {neighbors}")
-        if not neighbors:
+            print(f"[DISTRIBUTE BLOCK] verfügbare Nachbarn: {known_peers}")
+        if not known_peers:
             if DEBUG:
                 print(f"[DISTRIBUTE BLOCK] keine Nachbarn verfügbar.")
             return
 
         # Wähle z. B. maximal 2-3 zufällige Peers aus
-        sample_size = min(len(neighbors), 2)
-        target_peers = random.sample(neighbors, sample_size)
+        sample_size = min(len(known_peers), 2)
+        target_peers = random.sample(known_peers, sample_size)
 
-        for node in target_peers:
+        for target_peer in target_peers:
             try:
-                url = f'http://{node}/nodes/receive_block'
+                url = f'http://{target_peer}/nodes/receive_block'
                 if DEBUG:
                     print(f"[DISTRIBUTE BLOCK] Sende an: {url}")
                 payload = block.to_dict()
