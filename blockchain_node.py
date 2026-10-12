@@ -48,7 +48,7 @@ BOOTSTRAP_URLS = ["http://localhost:5000", "http://bootstrap:5000", "http://nonE
 class Block:
     def __init__(self, index, transactions, proof, previous_hash, timestamp=None):
         self.index = index
-        self.timestamp = timestamp or time.time()
+        self.timestamp = timestamp if timestamp is not None else time.time()
         self.transactions = transactions
         self.proof = proof
         self.previous_hash = previous_hash
@@ -74,8 +74,9 @@ class Blockchain:
         self.current_transactions = []
         
         # Den allerersten Block erstellen (Genesis-Block)
-        # Ein Startwert (proof=100) und ein Start-Hash (previous_hash='0') werden verwendet, um die Kette zu initialisieren.
-        # Genesis-Block erstellen (Index 0, Vorgänger-Hash "0")
+        # Start-Hash (previous_hash='0') werden verwendet, um die Kette zu initialisieren.
+        # Genesis-Block erstellen (Index 0, Vorgänger-Hash "0"
+        # Der Proof wurde mit mine_genesis.py gemint, sodass der Hash mit 4 führenden Nullen beginnt.)
         genesis_block = Block(
             index=0,
             transactions=[],
