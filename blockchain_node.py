@@ -48,7 +48,7 @@ BOOTSTRAP_URLS = ["http://localhost:5000", "http://bootstrap:5000", "http://nonE
 class Block:
     def __init__(self, index, transactions, proof, previous_hash, timestamp=None):
         self.index = index
-        self.timestamp = timestamp if timestamp is not None else time.time()
+        self.timestamp = timestamp if timestamp is not None and timestamp != 0.0 else time.time()
         self.transactions = transactions
         self.proof = proof
         self.previous_hash = previous_hash
@@ -243,7 +243,7 @@ class Blockchain:
             if node == MY_ADDRESS:
                 continue
             try:
-                # Wir fragen den Peer nach seiner Kette (über unseren /chain Endpoint)
+                # Wir fragen den Peer nach seiner Kette (über den /chain Endpoint)
                 response = requests.get(f'http://{node}/chain', timeout=3)
                 if response.status_code == 200:
                     data = response.json()
@@ -364,9 +364,9 @@ def sync_peers():
     }) + "\n", 200
 
 
-def background_sync_loop():
+def background_sync_loop(interval=10):
     """
-    Schickt alle X Sekunden einen Sync-Request an einen zufälligen Peer.
+    Schickt in einem bestimmten Intervall Sekunden einen Sync-Request an zufällige Peers.
     Dabei werden die bekannten Peers an den Peer geschickt, der dann seine bekannten Peers zurückgibt.
     Falls der Peer nicht erreichbar ist, wird er aus der Liste entfernt.
     Im Gegensatz zu einem Full Sweep sollten nur 1 bis 2 Peers pro Durchgang synchronisiert werden, um die Netzwerklast klein zu halten.
@@ -377,13 +377,13 @@ def background_sync_loop():
     peer_failure_counts = {}
     MAX_FAILURES = 3  # Nach so vielen Versuchen in Folge fliegt er raus
 
-    INTERVAL = 10  # Sekunden zwischen den Syncs
+      # Sekunden zwischen den Syncs
     MAX_JITTER = 3   # Sekunden, um die Intervalle zufällig zu variieren, damit nicht alle Peers gleichzeitig syncen
 
     jitter = random.uniform(0, MAX_JITTER)  # Optional: Zufällige Verzögerung, um gleichzeitige Syncs aller peers beim Start zu vermeiden
     try:
         while True:
-            time.sleep(INTERVAL + jitter)  # Alle INTERVAL Sekunden syncen (Test)
+            time.sleep(interval + jitter)  # Alle INTERVAL Sekunden syncen (Test)
             if not peer_manager.get_all_peers():
                 continue
 
@@ -419,6 +419,43 @@ def background_sync_loop():
     except Exception as e:
         print(f"[BACKGROUND CRITICAL ERROR] {e}", flush=True)
 
+
+
+def background_chain_sync_loop(interval=15):
+    """
+    Fragt in regelmäßigen Abständen einen zufälligen Peer nach seiner Kettenlänge,
+    um bei Rückstand automatisch die Konfliktlösung (resolve_conflicts) zu triggern.
+    """
+    while True:
+        try:
+            time.sleep(interval)
+            target_peers = list(peer_manager.get_random_peers(count=1))
+            if not target_peers:
+                continue
+                
+            for target_peer in target_peers:
+                if target_peer == MY_ADDRESS:
+                    continue  # Eigene Adresse überspringen
+                
+                try:
+                    # Frage NUR die Kette/Länge ab (sauber getrennt von Peer-Discovery)
+                    response = requests.get(f"http://{target_peer}/chain", timeout=3)
+                    if response.status_code == 200:
+                        data = response.json()
+                        remote_length = data.get("length", 0)
+                        
+                        # Wenn der Peer länger ist, Konflikt lösen
+                        if remote_length > len(blockchain.chain):
+                            print(f"[CHAIN-SYNC] Längere Kette von {target_peer} entdeckt (Länge {remote_length} vs eigene {len(blockchain.chain)}). Starte Konsens...")
+                            replaced = blockchain.resolve_conflicts()
+                            if replaced:
+                                print("[CHAIN-SYNC] Kette erfolgreich über Konsens aktualisiert.")
+                except Exception as req_err:
+                    # Einzelnen Peer-Fehler abfangen, damit die Schleife stabil weiterläuft
+                    pass
+                    
+        except Exception as e:
+            print(f"[CHAIN-SYNC CRITICAL ERROR] {e}", flush=True)
 
 # --- FLASK ENDPOINTS: Blockchain ---
 
