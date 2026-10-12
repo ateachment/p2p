@@ -146,10 +146,10 @@ class Blockchain:
             print(f"[DISTRIBUTE BLOCK] wurde aufgerufen mit parameter block: {block.to_dict()}")
 
         if DEBUG:
-            print(f"[DISTRIBUTE BLOCK] verfügbare Nachbarn: {known_peers}")
+            print(f"[DISTRIBUTE BLOCK] verfügbare Peers: {list(known_peers)}")
         if not known_peers:
             if DEBUG:
-                print(f"[DISTRIBUTE BLOCK] keine Nachbarn verfügbar.")
+                print(f"[DISTRIBUTE BLOCK] keine Peers verfügbar.")
             return
 
         # Wähle z. B. maximal 2-3 zufällige Peers aus
