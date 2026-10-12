@@ -142,6 +142,9 @@ class Blockchain:
         Leitet einen frisch geminten Block per gezieltem Unicast-Push-Loop
         an eine zufällige Auswahl bekannter Nachbarn weiter.
         """
+        if DEBUG:
+            print(f"[DISTRIBUTE BLOCK] aufgerufen mit parameter block: {block.to_dict()}")
+
         neighbors = list(getattr(self, 'nodes', set()))
         if not neighbors:
             return
