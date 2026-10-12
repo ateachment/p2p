@@ -578,8 +578,10 @@ if __name__ == '__main__':
     # Bootstrap-Funktion direkt beim Start ausführen, damit der peer seine bekannten Peers hat, bevor er Anfragen beantwortet.
     bootstrap()
 
-    # Hintergrund-Thread für den periodischen Sync starten
+    # Hintergrund-Threads für den periodischen Sync starten
     sync_thread = threading.Thread(target=background_sync_loop, daemon=True)
+    sync_thread.start()
+    sync_thread = threading.Thread(target=background_chain_sync_loop, daemon=True)
     sync_thread.start()
     
     # Flask-Server starten
