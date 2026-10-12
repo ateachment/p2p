@@ -6,7 +6,7 @@ Tests for the blockchain_node module.
 import json
 import socket
 import blockchain_node
-from blockchain_node import app
+from blockchain_node import app, blockchain
 import requests
 import pytest
 from unittest.mock import patch, MagicMock
@@ -27,8 +27,8 @@ def reset_state():
     if hasattr(blockchain_node, "peer_failure_counts"):
         blockchain_node.peer_failure_counts.clear()
         
-    # 3. Blockchain-Instanz auf den Genesis-Block zurücksetzen
-    blockchain_node.blockchain = blockchain_node.Blockchain()
+    # 3. Bestehende Blockchain-Instanz sauber zurücksetzen 
+    blockchain_node.blockchain.__init__()
 
     yield
 
@@ -162,9 +162,119 @@ def test_mine_block(client):
     assert len(data['transactions']) == 2
     assert data['block_hash'].startswith("0000"), f"Der Block-Hash {data['block_hash']} hat keine 4 führenden Nullen!"
 
-def test_consensus_resolve(client):
-    """Testet den Konsens-Endpunkt, wenn keine anderen Peers da sind."""
-    response = client.get('/nodes/resolve')
-    assert response.status_code == 200
-    data = json.loads(response.data)
-    assert 'auf dem neuesten Stand' in data['message']
+
+def test_valid_chain_success(client):
+    """Testet, ob eine intakte Kette mit Transaktionen als gültig erkannt wird."""
+
+    client.post('/transactions/new', json={
+        'sender': 'Alice',
+        'recipient': 'Bob',
+        'amount': 10
+    })
+    client.get('/mine')
+
+    chain_data = [b.to_dict() for b in blockchain.chain]
+    
+    assert blockchain.valid_chain(chain_data) is True
+
+def test_valid_chain_invalid_genesis(client):
+    """Testet, ob eine Kette mit manipuliertem Genesis-Block sofort abgelehnt wird."""
+    
+    chain_data = [b.to_dict() for b in blockchain.chain]
+    # Genesis-Block Index manipulieren (muss 0 sein)
+    chain_data[0]['index'] = 99
+    
+    assert blockchain.valid_chain(chain_data) is False
+
+def test_valid_chain_broken_link(client):
+    """Testet, ob eine Kette mit gebrochenem previous_hash abgelehnt wird."""
+    client.post('/transactions/new', json={
+        'sender': 'Alice',
+        'recipient': 'Bob',
+        'amount': 10
+    })
+    client.get('/mine')
+    
+    chain_data = [b.to_dict() for b in blockchain.chain]
+    # Den previous_hash von Block 1 absichtlich zerstören
+    chain_data[1]['previous_hash'] = "0000000000000000000000000000000000000000000000000000000000000000"
+    
+    assert blockchain.valid_chain(chain_data) is False
+
+def test_valid_chain_invalid_pow(client):
+    """Testet, ob ein Block ohne gelösten Proof-of-Work (keine 4 Nullen im Hash) abgelehnt wird."""
+    client.post('/transactions/new', json={
+        'sender': 'Alice',
+        'recipient': 'Bob',
+        'amount': 10
+    })
+    client.get('/mine')
+    
+    chain_data = [b.to_dict() for b in blockchain.chain]
+    # Den Proof von Block 1 so verändern, dass der Hash keine 4 führenden Nullen hat
+    chain_data[1]['proof'] = 999999  
+    
+    assert blockchain.valid_chain(chain_data) is False
+
+
+def test_resolve_conflicts_replaces_chain(monkeypatch):
+    """Testet, ob resolve_conflicts die eigene Kette durch eine längere Peer-Kette ersetzt."""
+    # 1. Test-Peer hinzufügen
+    blockchain_node.known_peers.add('192.168.1.100:5000')
+
+    # 2. Aktuelle Kette als Basis holen
+    current_chain_dicts = [b.to_dict() for b in blockchain.chain]
+    original_length = len(current_chain_dicts)
+
+    # 3. Eine längere Fake-Kette vom Peer simulieren
+    peer_chain_data = {
+        'length': original_length + 1,
+        'chain': current_chain_dicts + [{
+            'index': original_length,
+            'timestamp': 1700000000.0,
+            'transactions': [],
+            'proof': 12345,
+            'previous_hash': blockchain.last_block.hash()
+        }]
+    }
+
+    # 4. Mock-Response mit MagicMock aufbauen
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = peer_chain_data
+
+    # 5. requests.get und valid_chain patchen
+    monkeypatch.setattr('blockchain_node.requests.get', lambda url, timeout=1.5: mock_response)
+    monkeypatch.setattr(blockchain, 'valid_chain', lambda *args: True)
+
+    # 6. Konfliktlösung ausführen
+    replaced = blockchain.resolve_conflicts()
+
+    # Assertions
+    assert replaced is True
+    assert len(blockchain.chain) == original_length + 1
+
+
+def test_resolve_conflicts_keeps_own_chain(monkeypatch):
+    """Testet, ob resolve_conflicts die Kette behält, wenn die Peer-Kette kürzer/gleich lang ist."""
+    blockchain_node.known_peers.add('192.168.1.100:5000')
+
+    current_chain_dicts = [b.to_dict() for b in blockchain.chain]
+
+    # Peer liefert eine Kette mit gleicher Länge
+    peer_chain_data = {
+        'length': len(current_chain_dicts),
+        'chain': current_chain_dicts
+    }
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = peer_chain_data
+
+    monkeypatch.setattr('requests.get', lambda url, timeout=1.5: mock_response)
+
+    replaced = blockchain.resolve_conflicts()
+
+    # Assertions: Es wurde nichts ersetzt
+    assert replaced is False
+    assert len(blockchain.chain) == len(current_chain_dicts)

@@ -5,7 +5,7 @@ import random
 import threading
 import time
 
-from flask import Flask, request, Response
+from flask import Flask, jsonify, request, Response
 import hashlib
 import json
 import os
@@ -132,27 +132,76 @@ class Blockchain:
     def hash(block):
         """Statische Hilfsmethode für Kompatibilität."""
         return block.hash()
+
+    def distribute_block(self, block):
+        """
+        Leitet einen frisch geminten Block per gezieltem Unicast-Push-Loop
+        an eine zufällige Auswahl bekannter Nachbarn weiter.
+        """
+        neighbors = list(getattr(self, 'nodes', set()))
+        if not neighbors:
+            return
+
+        # Wähle z. B. maximal 2-3 zufällige Peers aus
+        sample_size = min(len(neighbors), 2)
+        target_peers = random.sample(neighbors, sample_size)
+
+        for node in target_peers:
+            try:
+                url = f'http://{node}/nodes/receive_block'
+                payload = block.to_dict()
+                requests.post(url, json=payload, timeout=1.5)
+            except requests.exceptions.RequestException:
+                # Knoten ist nicht erreichbar -> ignorieren
+                continue
+
+    
     def valid_chain(self, chain):
         """
-        Prüft, ob eine fremde Blockchain gültig ist.
-        Dazu wird jeder Block mit dem Hash seines Vorgängers 
-        und dem Proof-of-Work überprüft.
+        Prüft, ob eine fremde Blockchain (als Liste von Dicts oder Objekten) gültig ist.
         """
-        last_block = chain[0]
+        if not chain:
+            return False
+
+        # Konvertiere ggf. JSON-Daten in Block-Objekte
+        block_objects = []
+        for b in chain:
+            if isinstance(b, dict):
+                block_objects.append(Block(
+                    index=b['index'],
+                    transactions=b['transactions'],
+                    proof=b['proof'],
+                    previous_hash=b['previous_hash'],
+                    timestamp=b['timestamp']
+                ))
+            else:
+                block_objects.append(b)
+
+        # 1. Prüfe den Genesis-Block (Index 0 muss "0" als previous_hash haben)
+        genesis = block_objects[0]
+        if genesis.index != 0 or genesis.previous_hash != "0":
+            return False
+
+        # 2. Prüfe alle weiteren Blöcke
         current_index = 1
+        while current_index < len(block_objects):
+            block = block_objects[current_index]
+            prev_block = block_objects[current_index - 1]
 
-        while current_index < len(chain):
-            block = chain[current_index]
-            
-            # 1. Prüfen, ob der Hash des Vorgängers korrekt ist
-            if block['previous_hash'] != self.hash(last_block):
-                return False
-            
-            # 2. Prüfen, ob der Proof-of-Work korrekt gelöst wurde
-            if not self.valid_proof(last_block['proof'], block['proof']):
+            # A) Stimmt der previous_hash mit dem echten Hash des Vorgängers überein?
+            if block.previous_hash != prev_block.hash():
                 return False
 
-            last_block = block
+            # B) Proof-of-Work-Prüfung (beginnt der *eigene* Hash des Blocks mit 0000?)
+            if block.hash()[:4] != "0000":
+                return False
+
+            # WICHTIGER HINWEIS ZUM PREVIOUS_HASH:
+            # Der *previous_hash* von Block 1 zeigt auf den Genesis-Block. 
+            # Da der Genesis-Block nicht gemined wurde, hat dessen Hash KEINE 4 führenden Nullen.
+            # Das ist völlig korrekt und kein Fehler! 
+            # Erst ab Block 2 zeigt der previous_hash auf einen geminten Block (der mit 0000 beginnt).
+
             current_index += 1
 
         return True
@@ -334,26 +383,47 @@ def background_sync_loop():
 
 # --- FLASK ENDPOINTS: Blockchain ---
 
-"""
-    Konsens-Endpoint: Fragt alle bekannten Peers ab und ersetzt die eigene Kette, falls eine längere gültige gefunden wird.
-    Rückgabe: JSON mit der neuen Kette (falls ersetzt) oder der eigenen Kette
-"""
-@app.route('/nodes/resolve', methods=['GET'])
-def consensus():
-    replaced = blockchain.resolve_conflicts()
 
-    if replaced:
-        response = {
-            'message': 'Unsere Kette wurde durch eine längere ersetzt!',
-            'new_chain': [block.to_dict() for block in blockchain.chain]
-        }
-    else:
-        response = {
-            'message': 'Unsere Kette ist bereits auf dem neuesten Stand.',
-            'chain': [block.to_dict() for block in blockchain.chain]
-        }
+"""
+Eingehenden Block entgegennehmen, validieren und anhängen, falls er gültig ist.
+Rückgabe: JSON mit einer Bestätigungsmeldung
+"""
+@app.route('/nodes/receive_block', methods=['POST'])
+def receive_block():
 
-    return json.dumps(response), 200
+    values = request.get_json()
+    
+    required = ['index', 'timestamp', 'transactions', 'proof', 'previous_hash']
+    if not all(k in values for k in required):
+        return jsonify({'message': 'Fehlende Block-Daten'}), 400
+
+    # Erstelle ein Block-Objekt aus den empfangenen Daten
+    incoming_block = Block(
+        index=values['index'],
+        transactions=values['transactions'],
+        proof=values['proof'],
+        previous_hash=values['previous_hash'],
+        timestamp=values['timestamp']
+    )
+
+    last_block = blockchain.last_block
+
+    # Prüffall 1: Der Block passt exakt auf unsere aktuelle Kette auf
+    if incoming_block.previous_hash == last_block.hash() and incoming_block.index == last_block.index + 1:
+        if incoming_block.hash()[:4] == "0000":
+            blockchain.chain.append(incoming_block)
+            # Transaktionen bereinigen, falls sie lokal noch im Pool lagen
+            # ...
+            return jsonify({'message': 'Block akzeptiert und angehängt.'}) + "\n", 201
+
+    # Prüffall 2: Unser Node hat den Anschluss verpasst oder liegt zurück -> Konsens starten!
+    if incoming_block.index > last_block.index + 1:
+        replaced = blockchain.resolve_conflicts()
+        if replaced:
+            return jsonify({'message': 'Kette durch Konfliktloesung aktualisiert.'}) + "\n", 200
+
+    return jsonify({'message': 'Block abgelehnt (Ungueltig oder veraltet).'}) + "\n", 400
+
 
 """
     Transaktion-Endpoint: Erstellt eine neue Transaktion und fügt sie der Liste hinzu.
@@ -371,6 +441,7 @@ def new_transaction():
     # Transaktion zur Liste hinzufügen
     index = blockchain.new_transaction(values['sender'], values['recipient'], values['amount'])
     return json.dumps({'message': f'Transaktion wird zu Block {index} hinzugefuegt'}) + "\n", 201
+
 
 """
     Mining-Endpoint: Führt den Proof-of-Work aus, erstellt eine neue Transaktion für die Mining-Belohnung und fügt einen neuen Block hinzu.
@@ -397,6 +468,8 @@ def mine():
     previous_hash = last_block.hash()
     block = blockchain.new_block(proof, previous_hash, timestamp=block_timestamp)
 
+    # 5. Gezielte Weiterleitung an zufällige ausgewählte Peers (Unicast-Push-Loop)
+    blockchain.distribute_block(block)
 
     response = {
         'message': "Neuer Block erfolgreich gemined!",
