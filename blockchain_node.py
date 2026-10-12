@@ -305,7 +305,7 @@ def json_response(data, status=200):
         # kompakt für Performance/Produktion
         content = json.dumps(data, ensure_ascii=False)
         
-    return Response(content, mimetype='application/json'), status
+    return Response(content, status, mimetype='application/json')
 
 # --- FLASK ENDPOINTS: P2P & GOSSIP ---
 
