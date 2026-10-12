@@ -12,6 +12,8 @@ import os
 import socket
 import requests
 
+import peer_manager as pm
+
 app = Flask(__name__)
 
 # Globale Debug-Schalter-Konstante
@@ -26,13 +28,13 @@ MY_ADDRESS = f"{MY_IP}:{MY_PORT}"
 if DEBUG:
     print(f"[Start] Eigene IP ermittelt: {MY_IP}:{MY_PORT}")
 
-# Lokale Liste für bekannte Peers
-known_peers = set()
+# Instanziierung der PeerManager-Klasse (mit 60 Sekunden Cooldown)
+peer_manager = pm.PeerManager(cooldown_seconds=60)
 
 # Funktion, um zufällige Peers auszuwählen
 def choose_random_peers(n=1):
     # n zufällige Peers auswählen (oder weniger, falls die Liste kleiner ist, ca. 1-2 Peers pro Sync-Durchgang)
-    peers_list = list(known_peers)
+    peers_list = peer_manager.get_all_peers()
     # shuffle mischt die Liste durch, danach nehmen wir z.B. die ersten n (oder weniger, falls die Liste kleiner ist)
     random.shuffle(peers_list)
     return peers_list[:n]   # Hier kann man die Anzahl der Peers anpassen, die man gleichzeitig syncen möchte
@@ -154,13 +156,13 @@ class Blockchain:
             print(f"[DISTRIBUTE BLOCK] wurde aufgerufen mit parameter block: {block.to_dict()}")
 
         if DEBUG:
-            print(f"[DISTRIBUTE BLOCK] verfügbare Peers: {list(known_peers)}")
-        if not known_peers:
+            print(f"[DISTRIBUTE BLOCK] verfügbare Peers: {list(peer_manager.get_all_peers())}")
+        if not peer_manager.get_all_peers():
             if DEBUG:
                 print(f"[DISTRIBUTE BLOCK] keine Peers verfügbar.")
             return
 
-        target_peers = choose_random_peers(n=1)  # Wähle 1 zufällige Peers aus
+        target_peers = peer_manager.get_random_peers(count=1)  # Wähle 1 zufällige Peers aus
 
         for target_peer in target_peers:
             try:
@@ -229,7 +231,7 @@ class Blockchain:
         Konsens-Algorithmus: Geht alle bekannten Peers durch, fragt deren 
         Kette ab und ersetzt unsere eigene, falls eine längere gültige gefunden wird.
         """
-        neighbours = known_peers
+        neighbours = peer_manager.get_all_peers()   
         new_chain = None
 
         # Wir interessieren uns nur für Ketten, die länger sind als unsere eigene
@@ -271,8 +273,10 @@ node_identifier = str(socket.gethostname())
 
 
 def bootstrap():
-    """Fragt beim Start den Bootstrap-Server ab, füllt die Peer-Liste 
-    und filtert die eigene IP-Adresse heraus."""
+    """
+    Fragt beim Start den Bootstrap-Server ab, füllt die Peer-Liste 
+    und filtert die eigene IP-Adresse heraus.
+    """
     own_ip = socket.gethostbyname(socket.gethostname())
     port = os.environ.get("PORT", "5000")
     
@@ -293,7 +297,7 @@ def bootstrap():
                 for peer in raw_peers:
                     # Prüfen, ob die eigene IP (mit oder ohne Port) in dem Eintrag steckt
                     if own_ip not in peer:
-                        known_peers.add(peer)
+                        peer_manager.add_peer(peer)
                         if DEBUG:
                             print(f"[Bootstrap] Fremden Peer hinzugefügt: {peer}")
                     else:
@@ -308,7 +312,7 @@ def bootstrap():
                 print(f"[Bootstrap] Konnte Bootstrap-Server nicht erreichen: {e}")
 
     if DEBUG:
-        print(f"[Bootstrap] Finale bekannte Peers: {list(known_peers)}")
+        print(f"[Bootstrap] Finale bekannte Peers: {list(peer_manager.get_all_peers())}")
 
 
 def json_response(data, status=200):
@@ -328,7 +332,7 @@ def json_response(data, status=200):
 def publish_some_peer_ips():
     return json.dumps({ 
         "peer_ip": MY_ADDRESS, 
-        "known_peers": list(known_peers) 
+        "known_peers": list(peer_manager.get_all_peers()) 
     }) + "\n", 200  # 200 OK
 
 # Peers hinter NAT oder in Docker-Containern können ihre IP-Adresse nicht direkt veröffentlichen, 
@@ -337,21 +341,20 @@ def publish_some_peer_ips():
 # die dann ihre anderen Peers zurückgeben. 
 @app.route('/sync/peers', methods=['POST'])
 def sync_peers():
-    global known_peers
     data = request.get_json() or {}
     incoming_peers = data.get("peers", [])
     
     # 1. Fremde Peers aufnehmen
     for p in incoming_peers:
-        if p not in known_peers and p != MY_ADDRESS:
-            known_peers.add(p)
+        if p not in peer_manager.get_all_peers() and p != MY_ADDRESS:
+            peer_manager.add_peer(p)
             if DEBUG:
                 print(f"[SYNC] Neuer Peer erhalten: {p}")
             if DEBUG:
-                print(f"[SYNC] Aktuelle bekannte Peers: {list(known_peers)}")
+                print(f"[SYNC] Aktuelle bekannte Peers: {list(peer_manager.get_all_peers())}")
             
     # 2. Nur das zurückgeben, was der Absender noch nicht hatte (Diff)
-    diff_peers = [p for p in known_peers if p not in incoming_peers and p != MY_ADDRESS]
+    diff_peers = [p for p in peer_manager.get_all_peers() if p not in incoming_peers and p != MY_ADDRESS]
     
     return json.dumps({
         "peer_ip": MY_ADDRESS,
@@ -379,10 +382,10 @@ def background_sync_loop():
     try:
         while True:
             time.sleep(INTERVAL + jitter)  # Alle INTERVAL Sekunden syncen (Test)
-            if not known_peers:
+            if not peer_manager.get_all_peers():
                 continue
 
-            target_peers = choose_random_peers(n=1)   # Hier kann man die Anzahl der Peers anpassen, die man gleichzeitig syncen möchte (hier 1 Peer)
+            target_peers = peer_manager.get_random_peers(count=1)   # Hier kann man die Anzahl der Peers anpassen, die man gleichzeitig syncen möchte (hier 1 Peer)
                 
             for target_peer in list(target_peers):  # Kopie der Liste, da wir sie während der Iteration ändern könnten
                 if target_peer == MY_ADDRESS:
@@ -390,7 +393,7 @@ def background_sync_loop():
                 
                 print(f"[BACKGROUND] Starte Sync mit {target_peer}...")
                 try:
-                    payload = {"peers": [MY_ADDRESS] + list(known_peers)}
+                    payload = {"peers": [MY_ADDRESS] + list(peer_manager.get_all_peers())}
                     response = requests.post(f"http://{target_peer}/sync/peers", json=payload, timeout=3)
                     
                     if response.status_code == 200:
@@ -398,9 +401,9 @@ def background_sync_loop():
                         remote_peers = data.get("diff_peers", [])
                         # Zurück-Mergen
                         for p in remote_peers:
-                            if p not in known_peers and p != MY_ADDRESS:
-                                known_peers.add(p)
-                        print(f"[BACKGROUND] Sync erfolgreich. Aktuelle Peers: {list(known_peers)}")
+                            if p not in peer_manager.get_all_peers() and p != MY_ADDRESS:
+                                peer_manager.add_peer(p)
+                        print(f"[BACKGROUND] Sync erfolgreich. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
                     else:
                         print(f"[BACKGROUND] Fehler vom Peer {target_peer}: Status {response.status_code}")
                 except Exception as e:
@@ -408,10 +411,9 @@ def background_sync_loop():
                     peer_failure_counts[target_peer] = peer_failure_counts.get(target_peer, 0) + 1
                     print(f"[BACKGROUND] Konnte Peer {target_peer} nicht erreichen: {e} (Fehleranzahl: {peer_failure_counts[target_peer]})")
                     if peer_failure_counts[target_peer] >= MAX_FAILURES:
-                        known_peers.remove(target_peer)
-                        del peer_failure_counts[target_peer]
-                        print(f"[BACKGROUND] Peer {target_peer} nach {MAX_FAILURES} Fehlversuchen entfernt. Aktuelle Peers: {list(known_peers)}")
-            print(f"[BACKGROUND] Sync-Durchgang abgeschlossen. Aktuelle Peers: {list(known_peers)}")
+                        peer_manager.mark_peer_dead(target_peer)
+                        print(f"[BACKGROUND] Peer {target_peer} nach {MAX_FAILURES} Fehlversuchen entfernt. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
+            print(f"[BACKGROUND] Sync-Durchgang abgeschlossen. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
     except Exception as e:
         print(f"[BACKGROUND CRITICAL ERROR] {e}", flush=True)
 

@@ -21,7 +21,7 @@ MY_ADDRESS = f"{MY_IP}:{MY_PORT}"
 def reset_state():
     """Setzt globale Variablen vor jedem Test zurück, um Seiteneffekte zu vermeiden."""
     # 1. Netzwerk-Peers leeren
-    blockchain_node.known_peers = set()
+    blockchain_node.peer_manager.reset()
     
     # 2. Peer-Fehlerzähler zurücksetzen (falls global definiert)
     if hasattr(blockchain_node, "peer_failure_counts"):
@@ -62,7 +62,7 @@ def test_sync_peers():
     # Test des POST /sync/peers-Endpunkts
 
     # Vorbereitung: Der Server kennt bereits einen Peer, den der Client gleich NICHT mitschickt
-    blockchain_node.known_peers.add("172.18.0.50:5000")
+    blockchain_node.peer_manager.add_peer("172.18.0.50:5000")
 
     # "172.18.0.99:5000" ist ein bekannter Peer, dessen Adresse er mögicherweise vom Bootstrap-Server erhalten hat (falls dieser lief),
     # "172.18.0.100:5000" ist ein neuer Peer, den er noch nicht kennt.
@@ -82,8 +82,9 @@ def test_sync_peers():
 
 def test_background_sync_success():
     """Testet, ob neue Peers aus dem Diff während des Hintergrund-Syncs erfolgreich übernommen werden."""
-    blockchain_node.known_peers = {"172.18.0.99:5000"}
-    #blockchain_node.MY_ADDRESS = "172.18.0.2:5000"  # Explizit eine andere IP
+    blockchain_node.peer_manager.get_all_peers().clear()
+    blockchain_node.peer_manager.add_peer("172.18.0.99:5000")
+
     
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -100,12 +101,13 @@ def test_background_sync_success():
             pass
 
     mock_post.assert_called_once()
-    assert "172.18.0.88:5000" in blockchain_node.known_peers
-    assert "172.18.0.99:5000" in blockchain_node.known_peers
+    assert "172.18.0.88:5000" in blockchain_node.peer_manager.get_all_peers()
+    assert "172.18.0.99:5000" in blockchain_node.peer_manager.get_all_peers()
 
 def test_background_sync_failure_removes_peer():
     """Testet, ob ein Peer nach MAX_FAILURES (3) Fehlversuchen im Hintergrund-Loop entfernt wird."""
-    blockchain_node.known_peers = {"172.18.0.99:5000"}
+    blockchain_node.peer_manager.get_all_peers().clear()
+    blockchain_node.peer_manager.add_peer("172.18.0.99:5000")
 
     # 3 Durchläufe mit Timeout, beim 4. Mal bricht die Schleife via InterruptedError ab
     sleep_side_effect = [None, None, None, InterruptedError]
@@ -117,8 +119,8 @@ def test_background_sync_failure_removes_peer():
         except InterruptedError:
             pass
 
-    assert "172.18.0.99:5000" not in blockchain_node.known_peers
-    assert len(blockchain_node.known_peers) == 0
+    assert "172.18.0.99:5000" not in blockchain_node.peer_manager.get_all_peers()
+    assert len(blockchain_node.peer_manager.get_all_peers()) == 0
 
 
 # Testfälle für Blockchain-Endpunkte
@@ -220,7 +222,7 @@ def test_valid_chain_invalid_pow(client):
 def test_resolve_conflicts_replaces_chain(monkeypatch):
     """Testet, ob resolve_conflicts die eigene Kette durch eine längere Peer-Kette ersetzt."""
     # 1. Test-Peer hinzufügen
-    blockchain_node.known_peers.add('192.168.1.100:5000')
+    blockchain_node.peer_manager.add_peer('192.168.1.100:5000')
 
     # 2. Aktuelle Kette als Basis holen
     current_chain_dicts = [b.to_dict() for b in blockchain.chain]
@@ -257,7 +259,7 @@ def test_resolve_conflicts_replaces_chain(monkeypatch):
 
 def test_resolve_conflicts_keeps_own_chain(monkeypatch):
     """Testet, ob resolve_conflicts die Kette behält, wenn die Peer-Kette kürzer/gleich lang ist."""
-    blockchain_node.known_peers.add('192.168.1.100:5000')
+    blockchain_node.peer_manager.add_peer('192.168.1.100:5000')
 
     current_chain_dicts = [b.to_dict() for b in blockchain.chain]
 
