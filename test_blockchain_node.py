@@ -260,7 +260,7 @@ def test_sync_replaces_chain(monkeypatch):
     monkeypatch.setattr(blockchain, 'valid_chain', lambda *args: True)
 
     # 6. Synchronisation als Methode auf der Blockchain ausführen
-    replaced = blockchain.check_and_sync_with_peer('192.168.1.100:5000')
+    replaced = blockchain.check_and_sync_chain_with_peer('192.168.1.100:5000')
 
     # Assertions
     assert replaced is True
@@ -285,7 +285,7 @@ def test_sync_keeps_own_chain(monkeypatch):
 
     monkeypatch.setattr('blockchain_node.requests.get', lambda url, timeout=3: mock_response)
 
-    replaced = blockchain.check_and_sync_with_peer('192.168.1.100:5000')
+    replaced = blockchain.check_and_sync_chain_with_peer('192.168.1.100:5000')
 
     # Assertions: Es wurde nichts ersetzt
     assert replaced is False

@@ -225,7 +225,7 @@ class Blockchain:
 
         return True
 
-    def check_and_sync_with_peer(self, target_peer):
+    def check_and_sync_chain_with_peer(self, target_peer):
         """
         Fragt einen einzelnen Peer ab, validiert die Kette und ersetzt 
         die eigene bei Bedarf. Gibt True zurück, wenn ersetzt wurde, sonst False.
@@ -249,8 +249,12 @@ class Blockchain:
                                 timestamp=b['timestamp']
                             ) for b in remote_chain_data
                         ]
+                        if DEBUG:
+                            print(f"[CHAIN SYNC] Kette von Peer {target_peer} übernommen. Neue Länge: {len(self.chain)}")
                         return True
         except Exception:
+            if DEBUG:
+                print(f"[CHAIN SYNC] Fehler beim Synchronisieren mit Peer {target_peer}")
             pass
         return False
 
@@ -381,8 +385,8 @@ def background_sync_loop(interval=10):
             for target_peer in list(target_peers):  # Kopie der Liste, da wir sie während der Iteration ändern könnten
                 if target_peer == MY_ADDRESS:
                     continue  # Eigene Adresse überspringen
-                
-                print(f"[BACKGROUND] Starte Sync mit {target_peer}...")
+                if DEBUG:
+                    print(f"[BACKGROUND] Starte Sync mit {target_peer}...")
                 try:
                     payload = {"peers": [MY_ADDRESS] + list(peer_manager.get_all_peers())}
                     response = requests.post(f"http://{target_peer}/sync/peers", json=payload, timeout=3)
@@ -394,17 +398,22 @@ def background_sync_loop(interval=10):
                         for p in remote_peers:
                             if p not in peer_manager.get_all_peers() and p != MY_ADDRESS:
                                 peer_manager.add_peer(p)
-                        print(f"[BACKGROUND] Sync erfolgreich. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
+                        if DEBUG:
+                            print(f"[BACKGROUND] Sync erfolgreich. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
                     else:
-                        print(f"[BACKGROUND] Fehler vom Peer {target_peer}: Status {response.status_code}")
+                        if DEBUG:
+                            print(f"[BACKGROUND] Fehler vom Peer {target_peer}: Status {response.status_code}")
                 except Exception as e:
                     
                     peer_failure_counts[target_peer] = peer_failure_counts.get(target_peer, 0) + 1
-                    print(f"[BACKGROUND] Konnte Peer {target_peer} nicht erreichen: {e} (Fehleranzahl: {peer_failure_counts[target_peer]})")
+                    if DEBUG:
+                        print(f"[BACKGROUND] Konnte Peer {target_peer} nicht erreichen: {e} (Fehleranzahl: {peer_failure_counts[target_peer]})")
                     if peer_failure_counts[target_peer] >= MAX_FAILURES:
                         peer_manager.mark_peer_dead(target_peer)
-                        print(f"[BACKGROUND] Peer {target_peer} nach {MAX_FAILURES} Fehlversuchen entfernt. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
-            print(f"[BACKGROUND] Sync-Durchgang abgeschlossen. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
+                        if DEBUG:
+                            print(f"[BACKGROUND] Peer {target_peer} nach {MAX_FAILURES} Fehlversuchen entfernt. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
+            if DEBUG:
+                print(f"[BACKGROUND] Sync-Durchgang abgeschlossen. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
     except Exception as e:
         print(f"[BACKGROUND CRITICAL ERROR] {e}", flush=True)
 
@@ -425,7 +434,9 @@ def background_chain_sync_loop(interval=15):
             for target_peer in target_peers:
                 if target_peer == MY_ADDRESS:
                     continue
-                blockchain.check_and_sync_with_peer(target_peer)
+                if DEBUG:
+                    print(f"[CHAIN-SYNC] Prüfe Kette von Peer {target_peer}...")
+                blockchain.check_and_sync_chain_with_peer(target_peer)
                 
         except Exception as e:
             print(f"[CHAIN-SYNC CRITICAL ERROR] {e}", flush=True)
