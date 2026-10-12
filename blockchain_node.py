@@ -14,13 +14,17 @@ import requests
 
 app = Flask(__name__)
 
+# Globale Debug-Schalter-Konstante
+DEBUG = True
+
 
 # Eigene IP-Adresse einmalig beim Start ermitteln (global), bleibt dann konstant, da sich die IP-Adresse während der Laufzeit nicht ändert.
 MY_IP = socket.gethostbyname(socket.gethostname())
 MY_PORT = 5000
 MY_ADDRESS = f"{MY_IP}:{MY_PORT}"
 
-print(f"[Start] Eigene IP ermittelt: {MY_IP}:{MY_PORT}")
+if DEBUG:
+    print(f"[Start] Eigene IP ermittelt: {MY_IP}:{MY_PORT}")
 
 # Lokale Liste für bekannte Peers
 known_peers = set()
@@ -233,12 +237,14 @@ class Blockchain:
                         max_length = length
                         new_chain = chain
             except Exception as e:
-                print(f"[Consensus] Konnte Kette von {node} nicht abrufen: {e}")
+                if DEBUG:
+                    print(f"[Consensus] Konnte Kette von {node} nicht abrufen: {e}")
 
         # Wenn wir eine längere, gültige Kette gefunden haben, übernehmen wir sie
         if new_chain:
             self.chain = new_chain
-            print(f"[Consensus] Kette erfolgreich durch längere gültige Kette ersetzt.")
+            if DEBUG:
+                print(f"[Consensus] Kette erfolgreich durch längere gültige Kette ersetzt.")
             return True
 
         return False
@@ -256,11 +262,13 @@ def bootstrap():
     own_ip = socket.gethostbyname(socket.gethostname())
     port = os.environ.get("PORT", "5000")
     
-    print(f"[Bootstrap] Eigene IP ermittelt: {own_ip}:{port}")
+    if DEBUG:
+        print(f"[Bootstrap] Eigene IP ermittelt: {own_ip}:{port}")
 
     for BOOTSTRAP_URL in BOOTSTRAP_URLS:
         BOOTSTRAP_URL = f"{BOOTSTRAP_URL}/peers"
-        print(f"[Bootstrap] Frage Bootstrap-Server an: {BOOTSTRAP_URL}")
+        if DEBUG:
+            print(f"[Bootstrap] Frage Bootstrap-Server an: {BOOTSTRAP_URL}")
         
         try:
             response = requests.get(BOOTSTRAP_URL, timeout=3)
@@ -272,17 +280,32 @@ def bootstrap():
                     # Prüfen, ob die eigene IP (mit oder ohne Port) in dem Eintrag steckt
                     if own_ip not in peer:
                         known_peers.add(peer)
-                        print(f"[Bootstrap] Fremden Peer hinzugefügt: {peer}")
+                        if DEBUG:
+                            print(f"[Bootstrap] Fremden Peer hinzugefügt: {peer}")
                     else:
-                        print(f"[Bootstrap] Eigene IP übersprungen: {peer}")
-                    
+                        if DEBUG:
+                            print(f"[Bootstrap] Eigene IP übersprungen: {peer}")
+
             else:
-                print(f"[Bootstrap] Fehler vom Server: Status {response.status_code}")
+                if DEBUG:
+                    print(f"[Bootstrap] Fehler vom Server: Status {response.status_code}")
         except Exception as e:
-            print(f"[Bootstrap] Konnte Bootstrap-Server nicht erreichen: {e}")
+            if DEBUG:
+                print(f"[Bootstrap] Konnte Bootstrap-Server nicht erreichen: {e}")
 
-    print(f"[Bootstrap] Finale bekannte Peers: {list(known_peers)}")
+    if DEBUG:
+        print(f"[Bootstrap] Finale bekannte Peers: {list(known_peers)}")
 
+
+def json_response(data, status=200):
+    if DEBUG:
+        # formatiert mit Einrückung, Umlauten und Zeilenumbruch für die Konsole
+        content = json.dumps(data, indent=4, ensure_ascii=False) + "\n"
+    else:
+        # kompakt für Performance/Produktion
+        content = json.dumps(data, ensure_ascii=False)
+        
+    return Response(content, mimetype='application/json'), status
 
 # --- FLASK ENDPOINTS: P2P & GOSSIP ---
 
@@ -308,8 +331,10 @@ def sync_peers():
     for p in incoming_peers:
         if p not in known_peers and p != MY_ADDRESS:
             known_peers.add(p)
-            print(f"[SYNC] Neuer Peer erhalten: {p}")
-            print(f"[SYNC] Aktuelle bekannte Peers: {list(known_peers)}")
+            if DEBUG:
+                print(f"[SYNC] Neuer Peer erhalten: {p}")
+            if DEBUG:
+                print(f"[SYNC] Aktuelle bekannte Peers: {list(known_peers)}")
             
     # 2. Nur das zurückgeben, was der Absender noch nicht hatte (Diff)
     diff_peers = [p for p in known_peers if p not in incoming_peers and p != MY_ADDRESS]
@@ -395,7 +420,7 @@ def receive_block():
     
     required = ['index', 'timestamp', 'transactions', 'proof', 'previous_hash']
     if not all(k in values for k in required):
-        return jsonify({'message': 'Fehlende Block-Daten'}), 400
+        return json_response({'message': 'Fehlende Block-Daten'}, status=400)
 
     # Erstelle ein Block-Objekt aus den empfangenen Daten
     incoming_block = Block(
@@ -414,15 +439,15 @@ def receive_block():
             blockchain.chain.append(incoming_block)
             # Transaktionen bereinigen, falls sie lokal noch im Pool lagen
             # ...
-            return jsonify({'message': 'Block akzeptiert und angehängt.'}) + "\n", 201
+            return json_response({'message': 'Block akzeptiert und angehängt.'}), 201
 
     # Prüffall 2: Unser Node hat den Anschluss verpasst oder liegt zurück -> Konsens starten!
     if incoming_block.index > last_block.index + 1:
         replaced = blockchain.resolve_conflicts()
         if replaced:
-            return jsonify({'message': 'Kette durch Konfliktloesung aktualisiert.'}) + "\n", 200
+            return json_response({'message': 'Kette durch Konfliktloesung aktualisiert.'}), 200
 
-    return jsonify({'message': 'Block abgelehnt (Ungueltig oder veraltet).'}) + "\n", 400
+    return json_response({'message': 'Block abgelehnt (Ungueltig oder veraltet).'}), 400
 
 
 """
@@ -436,11 +461,11 @@ def new_transaction():
     # Prüfen, ob alle Pflichtfelder da sind
     required = ['sender', 'recipient', 'amount']
     if not all(k in values for k in required):
-        return 'Fehlende Werte', 400
+        return json_response({'message': 'Fehlende Werte'}, status=400)
 
     # Transaktion zur Liste hinzufügen
     index = blockchain.new_transaction(values['sender'], values['recipient'], values['amount'])
-    return json.dumps({'message': f'Transaktion wird zu Block {index} hinzugefuegt'}) + "\n", 201
+    return json_response({'message': f'Transaktion wird zu Block {index} hinzugefügt'}), 201
 
 
 """
@@ -480,7 +505,7 @@ def mine():
         'previous_hash': block.previous_hash, # .previous_hash statt ['previous_hash']
         'block_hash': block.hash()      # Direkt die Block-Hash-Methode nutzen
     }
-    return json.dumps(response) + "\n", 200
+    return json_response(response, 200)
 
 """
     Chain-Endpoint: Gibt die gesamte Blockchain zurück.
@@ -492,7 +517,7 @@ def full_chain():
         'chain': [block.to_dict() for block in blockchain.chain], # Wichtig: .to_dict() aufrufen!
         'length': len(blockchain.chain),
     }
-    return json.dumps(response) + "\n", 200
+    return json_response(response, 200)
 
 
 if __name__ == '__main__':
