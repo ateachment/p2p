@@ -48,7 +48,7 @@ BOOTSTRAP_URLS = ["http://localhost:5000", "http://bootstrap:5000", "http://nonE
 class Block:
     def __init__(self, index, transactions, proof, previous_hash, timestamp=None):
         self.index = index
-        self.timestamp = timestamp if timestamp is not None and timestamp != 0.0 else time.time()
+        self.timestamp = timestamp if timestamp is not None else time.time()
         self.transactions = transactions
         self.proof = proof
         self.previous_hash = previous_hash
@@ -218,54 +218,43 @@ class Blockchain:
             if block.hash()[:4] != "0000":
                 return False
 
-            # WICHTIGER HINWEIS ZUM PREVIOUS_HASH:
             # Der *previous_hash* von Block 1 zeigt auf den Genesis-Block. 
-            # Da der Genesis-Block nicht gemined wurde, hat dessen Hash KEINE 4 führenden Nullen.
-            # Das ist völlig korrekt und kein Fehler! 
-            # Erst ab Block 2 zeigt der previous_hash auf einen geminten Block (der mit 0000 beginnt).
+            # Der *previous_hash* von Block 2 zeigt auf Block 1 usw.
 
             current_index += 1
 
         return True
 
-    def resolve_conflicts(self):
+    def check_and_sync_with_peer(self, target_peer):
         """
-        Konsens-Algorithmus: Geht alle bekannten Peers durch, fragt deren 
-        Kette ab und ersetzt unsere eigene, falls eine längere gültige gefunden wird.
+        Fragt einen einzelnen Peer ab, validiert die Kette und ersetzt 
+        die eigene bei Bedarf. Gibt True zurück, wenn ersetzt wurde, sonst False.
         """
-        neighbours = peer_manager.get_all_peers()   
-        new_chain = None
-
-        # Wir interessieren uns nur für Ketten, die länger sind als unsere eigene
-        max_length = len(self.chain)
-
-        for node in neighbours:
-            if node == MY_ADDRESS:
-                continue
-            try:
-                # Wir fragen den Peer nach seiner Kette (über den /chain Endpoint)
-                response = requests.get(f'http://{node}/chain', timeout=3)
-                if response.status_code == 200:
-                    data = response.json()
-                    length = data['length']
-                    chain = data['chain']
-
-                    # Ist die Kette länger und mathematisch gültig?
-                    if length > max_length and self.valid_chain(chain):
-                        max_length = length
-                        new_chain = chain
-            except Exception as e:
-                if DEBUG:
-                    print(f"[Consensus] Konnte Kette von {node} nicht abrufen: {e}")
-
-        # Wenn wir eine längere, gültige Kette gefunden haben, übernehmen wir sie
-        if new_chain:
-            self.chain = new_chain
-            if DEBUG:
-                print(f"[Consensus] Kette erfolgreich durch längere gültige Kette ersetzt.")
-            return True
-
+        try:
+            response = requests.get(f"http://{target_peer}/chain", timeout=3)
+            if response.status_code == 200:
+                data = response.json()
+                remote_length = data.get("length", 0)
+                remote_chain_data = data.get("chain", [])
+                
+                # Wenn der Peer länger ist, prüfen und ggf. ersetzen
+                if remote_length > len(self.chain):
+                    if self.valid_chain(remote_chain_data):
+                        self.chain = [
+                            Block(
+                                index=b['index'],
+                                transactions=b['transactions'],
+                                proof=b['proof'],
+                                previous_hash=b['previous_hash'],
+                                timestamp=b['timestamp']
+                            ) for b in remote_chain_data
+                        ]
+                        return True
+        except Exception:
+            pass
         return False
+
+   
 
 # Globale Blockchain-Instanz erzeugen
 blockchain = Blockchain()
@@ -423,8 +412,8 @@ def background_sync_loop(interval=10):
 
 def background_chain_sync_loop(interval=15):
     """
-    Fragt in regelmäßigen Abständen einen zufälligen Peer nach seiner Kettenlänge,
-    um bei Rückstand automatisch die Konfliktlösung (resolve_conflicts) zu triggern.
+    Regelmäßiger Hintergrund-Loop, der zufällige Peers über die 
+    Blockchain-Methode synchronisiert.
     """
     while True:
         try:
@@ -435,27 +424,12 @@ def background_chain_sync_loop(interval=15):
                 
             for target_peer in target_peers:
                 if target_peer == MY_ADDRESS:
-                    continue  # Eigene Adresse überspringen
+                    continue
+                blockchain.check_and_sync_with_peer(target_peer)
                 
-                try:
-                    # Frage NUR die Kette/Länge ab (sauber getrennt von Peer-Discovery)
-                    response = requests.get(f"http://{target_peer}/chain", timeout=3)
-                    if response.status_code == 200:
-                        data = response.json()
-                        remote_length = data.get("length", 0)
-                        
-                        # Wenn der Peer länger ist, Konflikt lösen
-                        if remote_length > len(blockchain.chain):
-                            print(f"[CHAIN-SYNC] Längere Kette von {target_peer} entdeckt (Länge {remote_length} vs eigene {len(blockchain.chain)}). Starte Konsens...")
-                            replaced = blockchain.resolve_conflicts()
-                            if replaced:
-                                print("[CHAIN-SYNC] Kette erfolgreich über Konsens aktualisiert.")
-                except Exception as req_err:
-                    # Einzelnen Peer-Fehler abfangen, damit die Schleife stabil weiterläuft
-                    pass
-                    
         except Exception as e:
             print(f"[CHAIN-SYNC CRITICAL ERROR] {e}", flush=True)
+
 
 # --- FLASK ENDPOINTS: Blockchain ---
 
@@ -579,8 +553,10 @@ if __name__ == '__main__':
     bootstrap()
 
     # Hintergrund-Threads für den periodischen Sync starten
+    # p2p-Gossip-Mechanismus: Jeder Peer fragt in regelmäßigen Abständen zufällige Peers ab, um die Peer-Liste zu synchronisieren.
     sync_thread = threading.Thread(target=background_sync_loop, daemon=True)
     sync_thread.start()
+    # blockchain-Sync-Mechanismus: Jeder Peer fragt in regelmäßigen Abständen zufällige Peers ab, um die Kette zu synchronisieren.
     sync_thread = threading.Thread(target=background_chain_sync_loop, daemon=True)
     sync_thread.start()
     

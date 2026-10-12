@@ -3,6 +3,7 @@ File: test_blockchain_node.py
 Tests for the blockchain_node module.
 """
 
+import hashlib
 import json
 import socket
 import blockchain_node
@@ -179,7 +180,7 @@ def test_valid_chain_success(client):
     
     assert blockchain.valid_chain(chain_data) is True
 
-def test_valid_chain_invalid_genesis(client):
+def test_valid_chain_invalid_genesis1(client):
     """Testet, ob eine Kette mit manipuliertem Genesis-Block sofort abgelehnt wird."""
     
     chain_data = [b.to_dict() for b in blockchain.chain]
@@ -187,6 +188,15 @@ def test_valid_chain_invalid_genesis(client):
     chain_data[0]['index'] = 99
     
     assert blockchain.valid_chain(chain_data) is False
+
+def test_valid_chain_invalid_genesis2():
+    """Testet, ob hash und proof des Genesis-Blocks korrekt sind."""
+    
+    chain_data = [b.to_dict() for b in blockchain.chain]
+    # Genesis-Block hashen und prüfen, ob er die 4 führenden Nullen hat
+    genesis_hash = hashlib.sha256(json.dumps(chain_data[0], sort_keys=True).encode()).hexdigest()
+    
+    assert genesis_hash[:4] == "0000"
 
 def test_valid_chain_broken_link(client):
     """Testet, ob eine Kette mit gebrochenem previous_hash abgelehnt wird."""
@@ -219,8 +229,8 @@ def test_valid_chain_invalid_pow(client):
     assert blockchain.valid_chain(chain_data) is False
 
 
-def test_resolve_conflicts_replaces_chain(monkeypatch):
-    """Testet, ob resolve_conflicts die eigene Kette durch eine längere Peer-Kette ersetzt."""
+def test_sync_replaces_chain(monkeypatch):
+    """Testet, ob Blockchain.check_and_sync_with_peer die eigene Kette durch eine längere Peer-Kette ersetzt."""
     # 1. Test-Peer hinzufügen
     blockchain_node.peer_manager.add_peer('192.168.1.100:5000')
 
@@ -246,19 +256,19 @@ def test_resolve_conflicts_replaces_chain(monkeypatch):
     mock_response.json.return_value = peer_chain_data
 
     # 5. requests.get und valid_chain patchen
-    monkeypatch.setattr('blockchain_node.requests.get', lambda url, timeout=1.5: mock_response)
+    monkeypatch.setattr('blockchain_node.requests.get', lambda url, timeout=3: mock_response)
     monkeypatch.setattr(blockchain, 'valid_chain', lambda *args: True)
 
-    # 6. Konfliktlösung ausführen
-    replaced = blockchain.resolve_conflicts()
+    # 6. Synchronisation als Methode auf der Blockchain ausführen
+    replaced = blockchain.check_and_sync_with_peer('192.168.1.100:5000')
 
     # Assertions
     assert replaced is True
     assert len(blockchain.chain) == original_length + 1
 
 
-def test_resolve_conflicts_keeps_own_chain(monkeypatch):
-    """Testet, ob resolve_conflicts die Kette behält, wenn die Peer-Kette kürzer/gleich lang ist."""
+def test_sync_keeps_own_chain(monkeypatch):
+    """Testet, ob die Kette behalten wird, wenn die Peer-Kette kürzer/gleich lang ist."""
     blockchain_node.peer_manager.add_peer('192.168.1.100:5000')
 
     current_chain_dicts = [b.to_dict() for b in blockchain.chain]
@@ -273,9 +283,9 @@ def test_resolve_conflicts_keeps_own_chain(monkeypatch):
     mock_response.status_code = 200
     mock_response.json.return_value = peer_chain_data
 
-    monkeypatch.setattr('requests.get', lambda url, timeout=1.5: mock_response)
+    monkeypatch.setattr('blockchain_node.requests.get', lambda url, timeout=3: mock_response)
 
-    replaced = blockchain.resolve_conflicts()
+    replaced = blockchain.check_and_sync_with_peer('192.168.1.100:5000')
 
     # Assertions: Es wurde nichts ersetzt
     assert replaced is False
