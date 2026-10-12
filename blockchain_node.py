@@ -79,7 +79,8 @@ class Blockchain:
         genesis_block = Block(
             index=0,
             transactions=[],
-            proof=100,
+            proof=30530,  # mit mine_genesis.py gemint, so dass auch der hash mit 4 führenden Nullen beginnt
+            timestamp=0.0,
             previous_hash="0"
         )
         self.chain.append(genesis_block)
