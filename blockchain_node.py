@@ -143,10 +143,14 @@ class Blockchain:
         an eine zufällige Auswahl bekannter Nachbarn weiter.
         """
         if DEBUG:
-            print(f"[DISTRIBUTE BLOCK] aufgerufen mit parameter block: {block.to_dict()}")
+            print(f"[DISTRIBUTE BLOCK] wurde aufgerufen mit parameter block: {block.to_dict()}")
 
         neighbors = list(getattr(self, 'nodes', set()))
+        if DEBUG:
+            print(f"[DISTRIBUTE BLOCK] verfügbare Nachbarn: {neighbors}")
         if not neighbors:
+            if DEBUG:
+                print(f"[DISTRIBUTE BLOCK] keine Nachbarn verfügbar.")
             return
 
         # Wähle z. B. maximal 2-3 zufällige Peers aus
