@@ -38,15 +38,13 @@ peer_manager = pm.PeerManager(my_address=MY_ADDRESS, cooldown_seconds=60)
 # P2PClient Instanz erzeugen (gibt ihm den peer_manager und das debug-Flag mit)
 p2p_client = P2PClient(peer_manager=peer_manager, debug=DEBUG)
 
-
-# Funktion, um zufällige Peers auszuwählen
-def choose_random_peers(n=1):
-    # n zufällige Peers auswählen (oder weniger, falls die Liste kleiner ist, ca. 1-2 Peers pro Sync-Durchgang)
-    peers_list = peer_manager.get_all_peers()
-    # shuffle mischt die Liste durch, danach nehmen wir z.B. die ersten n (oder weniger, falls die Liste kleiner ist)
-    random.shuffle(peers_list)
-    return peers_list[:n]   # Hier kann man die Anzahl der Peers anpassen, die man gleichzeitig syncen möchte
-
+# Hilfsfunktion
+def json_response(data, status=200):
+    return app.response_class(
+        response=json.dumps(data) + '\n',
+        status=status,
+        mimetype='application/json'
+    )
 # Hier die URL(s) der Bootstrap-Server hardcodiert eintragen, die beim Start abgefragt werden sollen.
 # Sie werden mit versioniert, um Missbrauch zu verhindern. Die Peers können dann die bekannten Peers an andere Peers weitergeben, 
 # die diese dann in ihrer Liste aufnehmen und die dann ihre anderen Peers zurückgeben.
@@ -338,61 +336,67 @@ def sync_peers():
     }) + "\n", 200
 
 
+# Background-Funktionen werden in eigenen Threads aufgerufen
 
-def background_sync_loop(interval=10):
+def background_peers_sync():
+    target_peers = peer_manager.get_random_peers(count=1)
+        
+    for target_peer in list(target_peers):
+        if DEBUG:
+            print(f"[BACKGROUND] Starte Sync mit {target_peer}...")
+        
+        payload = {"peers": [MY_ADDRESS] + list(peer_manager.get_all_peers())}
+
+        try:
+            # Der P2PClient übernimmt das Senden, Timeouts, 
+            # Fehlerhandling und das automatische Quarantänemangement!
+            response = p2p_client.request(
+                target_peer, 
+                'POST', 
+                '/sync/peers', 
+                json=payload
+            )
+            
+            if response and response.status_code == 200:
+                data = response.json()
+                remote_peers = data.get("diff_peers", [])
+                
+                # Peers zentral über den PeerManager aktualisieren
+                if remote_peers:
+                    peer_manager.update_peers(remote_peers)
+                    
+                if DEBUG:
+                    print(f"[BACKGROUND] Sync erfolgreich. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
+            else:
+                if DEBUG and response:
+                    print(f"[BACKGROUND] Fehler vom Peer {target_peer}: Status {response.status_code}")
+        except Exception as e:
+            if DEBUG:
+                print(f"[BACKGROUND CRITICAL ERROR] {e}", flush=True)
+            # Hier wird der Peer bei einem Timeout oder Netzwerkfehler sofort als tot markiert:
+            peer_manager.mark_peer_dead(target_peer)
+            
+    if DEBUG:
+        print(f"[BACKGROUND] Sync-Durchgang abgeschlossen. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
+
+
+def background_peers_sync_loop(interval=10):
     """
     Schickt in einem bestimmten Intervall einen Sync-Request an zufällige Peers (Gossip-Protokoll).
     Nutzt den zentralen P2PClient für robustes Fehler- und Quarantänemanagement.
     """
     MAX_JITTER = 3  # Sekunden, um gleichzeitige Syncs zu vermeiden
     jitter = random.uniform(0, MAX_JITTER)
-    
-    try:
-        # Initiale Pause mit Jitter
-        time.sleep(jitter)
-        
-        while True:
-            time.sleep(interval)
-            
-            if not peer_manager.get_all_peers():
-                continue
+    # Initiale Pause mit Jitter
+    time.sleep(jitter)
 
-            target_peers = peer_manager.get_random_peers(count=1)
-                
-            for target_peer in list(target_peers):
-                if DEBUG:
-                    print(f"[BACKGROUND] Starte Sync mit {target_peer}...")
-                
-                payload = {"peers": [MY_ADDRESS] + list(peer_manager.get_all_peers())}
-                
-                # Der P2PClient übernimmt das Senden, Timeouts, 
-                # Fehlerhandling und das automatische Quarantänemangement!
-                response = p2p_client.request(
-                    target_peer, 
-                    'POST', 
-                    '/sync/peers', 
-                    json=payload
-                )
-                
-                if response and response.status_code == 200:
-                    data = response.json()
-                    remote_peers = data.get("diff_peers", [])
-                    
-                    # Peers zentral über den PeerManager aktualisieren
-                    if remote_peers:
-                        peer_manager.update_peers(remote_peers)
-                        
-                    if DEBUG:
-                        print(f"[BACKGROUND] Sync erfolgreich. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
-                else:
-                    if DEBUG and response:
-                        print(f"[BACKGROUND] Fehler vom Peer {target_peer}: Status {response.status_code}")
-                
+    while True:
+        time.sleep(interval)
+        try:
+            background_peers_sync()
+        except Exception as e:
             if DEBUG:
-                print(f"[BACKGROUND] Sync-Durchgang abgeschlossen. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
-                
-    except Exception as e:
-        print(f"[BACKGROUND CRITICAL ERROR] {e}", flush=True)
+                print(f"[BACKGROUND LOOP ERROR] {e}", flush=True)
 
 
 def background_chain_sync_loop(interval=15):
@@ -539,7 +543,7 @@ if __name__ == '__main__':
 
     # Hintergrund-Threads für den periodischen Sync starten
     # p2p-Gossip-Mechanismus: Jeder Peer fragt in regelmäßigen Abständen zufällige Peers ab, um die Peer-Liste zu synchronisieren.
-    sync_thread = threading.Thread(target=background_sync_loop, daemon=True)
+    sync_thread = threading.Thread(target=background_peers_sync_loop, daemon=True)
     sync_thread.start()
     # blockchain-Sync-Mechanismus: Jeder Peer fragt in regelmäßigen Abständen zufällige Peers ab, um die Kette zu synchronisieren.
     sync_thread = threading.Thread(target=background_chain_sync_loop, daemon=True)
