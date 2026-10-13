@@ -29,7 +29,7 @@ if DEBUG:
     print(f"[Start] Eigene IP ermittelt: {MY_IP}:{MY_PORT}")
 
 # Instanziierung der PeerManager-Klasse (mit 60 Sekunden Cooldown)
-peer_manager = pm.PeerManager(cooldown_seconds=60)
+peer_manager = pm.PeerManager(my_address=MY_ADDRESS, cooldown_seconds=60)
 
 # Funktion, um zufällige Peers auszuwählen
 def choose_random_peers(n=1):
@@ -341,7 +341,7 @@ def sync_peers():
     
     # 1. Fremde Peers aufnehmen
     for p in incoming_peers:
-        if p not in peer_manager.get_all_peers() and p != MY_ADDRESS:
+        if p not in peer_manager.get_all_peers():
             peer_manager.add_peer(p)
             if DEBUG:
                 print(f"[SYNC] Neuer Peer erhalten: {p}")
@@ -349,7 +349,7 @@ def sync_peers():
                 print(f"[SYNC] Aktuelle bekannte Peers: {list(peer_manager.get_all_peers())}")
             
     # 2. Nur das zurückgeben, was der Absender noch nicht hatte (Diff)
-    diff_peers = [p for p in peer_manager.get_all_peers() if p not in incoming_peers and p != MY_ADDRESS]
+    diff_peers = [p for p in peer_manager.get_all_peers() if p not in incoming_peers]
     
     return json.dumps({
         "peer_ip": MY_ADDRESS,
@@ -383,8 +383,6 @@ def background_sync_loop(interval=10):
             target_peers = peer_manager.get_random_peers(count=1)   # Hier kann man die Anzahl der Peers anpassen, die man gleichzeitig syncen möchte (hier 1 Peer)
                 
             for target_peer in list(target_peers):  # Kopie der Liste, da wir sie während der Iteration ändern könnten
-                if target_peer == MY_ADDRESS:
-                    continue  # Eigene Adresse überspringen
                 if DEBUG:
                     print(f"[BACKGROUND] Starte Sync mit {target_peer}...")
                 try:
@@ -396,7 +394,7 @@ def background_sync_loop(interval=10):
                         remote_peers = data.get("diff_peers", [])
                         # Zurück-Mergen
                         for p in remote_peers:
-                            if p not in peer_manager.get_all_peers() and p != MY_ADDRESS:
+                            if p not in peer_manager.get_all_peers():
                                 peer_manager.add_peer(p)
                         if DEBUG:
                             print(f"[BACKGROUND] Sync erfolgreich. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
@@ -432,8 +430,6 @@ def background_chain_sync_loop(interval=15):
                 continue
                 
             for target_peer in target_peers:
-                if target_peer == MY_ADDRESS:
-                    continue
                 if DEBUG:
                     print(f"[CHAIN-SYNC] Prüfe Kette von Peer {target_peer}...")
                 blockchain.check_and_sync_chain_with_peer(target_peer)

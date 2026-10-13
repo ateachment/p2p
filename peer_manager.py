@@ -1,43 +1,68 @@
 # PeerManager mit Cooldown-Mechanismus (Penalty Box)
 
+from re import DEBUG
 import time
 import threading
 import random
 
 class PeerManager:
-    def __init__(self, cooldown_seconds=60):
+    def __init__(self, my_address, cooldown_seconds=60, max_failures=3):
         """
-        Verwaltet bekannte Peers und blockiert ausgefallene Peers 
-        für eine bestimmte Cooldown-Zeit (Standard: 60 Sekunden).
+        Verwaltet bekannte Peers, blockiert nicht erreichbare Peers 
+        (Penalty Box = dead_peers) für eine bestimmte Zeit (cooldown_seconds).
+        Filtert dabei konsequent die eigene Adresse heraus.
         """
+        self.my_address = my_address
         self.peers = set()                 # Aktive, erreichbare Peers
-        self.dead_peers = {}               # Dictionary: { peer_address: timestamp_when_marked_dead }
+        self.dead_peers = {}               # Dictionary: { peer_address: [timestamp_when_dead, failure_count] }
         self.cooldown_seconds = cooldown_seconds
+        self.max_failures = max_failures
         self.lock = threading.Lock()       # Verhindert Race Conditions bei Multithreading
 
     def add_peer(self, peer: str):
-        """Fügt einen Peer hinzu, sofern er nicht im Cooldown ist."""
+        """Fügt einen Peer hinzu, sofern er nicht die eigene Adresse ist und nicht im Cooldown ist."""
         with self.lock:
             self._cleanup_cooldown_unlocked()
-            if peer not in self.dead_peers:
+            if peer not in self.dead_peers and peer != self.my_address:
                 self.peers.add(peer)
 
     def mark_peer_dead(self, peer: str):
-        """Setzt einen Peer in den Cooldown (Penalty Box) und entfernt ihn aus den aktiven Peers."""
+        """Setzt einen Peer in den Cooldown und entfernt ihn aus den aktiven Peers."""
         with self.lock:
             self.peers.discard(peer)
-            self.dead_peers[peer] = time.time()
+            # Prüfen, ob er schon in der Penalty Box ist
+            if peer in self.dead_peers:
+                timestamp, failures = self.dead_peers[peer]
+                failures += 1
+            else:
+                failures = 1
+            
+            timestamp = time.time()
+            
+            # Prüfen ob endgültig rauswerfen
+            if failures >= self.max_failures:
+                if DEBUG:
+                    print(f"[PeerManager] Peer {peer} nach {self.max_failures} Fehlern endgültig gelöscht.")
+                self.dead_peers.pop(peer, None)
+            else: # timestamp und failures updaten in dead_peers
+                self.dead_peers[peer] = [timestamp, failures]
 
     def update_peers(self, incoming_peers):
-        """Aktualisiert die Peer-Liste von außen (z.B. nach Sync), ignoriert aber Cooldown-Peers."""
+        """
+        Aktualisiert die Peer-Liste von außen (z.B. nach Sync), 
+        ignoriert dabei sich selbst und die Cooldown-Peers.
+        """
         with self.lock:
-            self.cleanup_cooldown()
+            self._cleanup_cooldown_unlocked()
             for peer in incoming_peers:
-                if peer not in self.dead_peers:
+                if peer not in self.dead_peers and peer != self.my_address:
                     self.peers.add(peer)
 
     def get_all_peers(self) -> list:
-        """Gibt eine Liste aller aktuell gültigen, aktiven Peers zurück (thread-sicher)."""
+        """
+        Gibt eine Liste aller aktuell gültigen, aktiven Peers 
+        exkl. der eigenen Adresse zurück (thread-sicher).
+        """
         with self.lock:
             self._cleanup_cooldown_unlocked()
             return list(self.peers)
@@ -65,7 +90,7 @@ class PeerManager:
         """
         now = time.time()
         expired_peers = [
-            peer for peer, timestamp in self.dead_peers.items()
+            peer for peer, (timestamp, failures) in self.dead_peers.items()
             if now - timestamp > self.cooldown_seconds
         ]
         for peer in expired_peers:
