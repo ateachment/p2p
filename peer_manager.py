@@ -32,6 +32,10 @@ class PeerManager:
         with self.lock:
             self.peers.discard(peer)
             now = time.time()
+
+            failures = 1
+            timestamp = now
+
             # Prüfen, ob er schon in der Penalty Box ist
             if peer in self.dead_peers:
                 timestamp, failures = self.dead_peers[peer]
@@ -55,7 +59,7 @@ class PeerManager:
             else:
                 self.dead_peers[peer] = [timestamp, failures]
 
-                
+
     def update_peers(self, incoming_peers):
         """
         Aktualisiert die Peer-Liste von außen (z.B. nach Sync), 
