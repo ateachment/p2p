@@ -48,7 +48,7 @@ def choose_random_peers(n=1):
 # Hier die URL(s) der Bootstrap-Server hardcodiert eintragen, die beim Start abgefragt werden sollen.
 # Sie werden mit versioniert, um Missbrauch zu verhindern. Die Peers können dann die bekannten Peers an andere Peers weitergeben, 
 # die diese dann in ihrer Liste aufnehmen und die dann ihre anderen Peers zurückgeben.
-BOOTSTRAP_URLS = ["http://localhost:5000", "http://bootstrap:5000", "http://nonExistent:5000"]  
+BOOTSTRAP_URLS = ["localhost:5000", "bootstrap:5000", "nonExistent:5000"]  
 
 
 class Block:
