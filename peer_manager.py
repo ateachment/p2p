@@ -24,29 +24,38 @@ class PeerManager:
         with self.lock:
             self._cleanup_cooldown_unlocked()
             if peer not in self.dead_peers and peer != self.my_address:
-                self.peers.add(peer)
+                self.peers.add(peer)  # doppelter Eintag ist nicht möglich wegen set()
 
     def mark_peer_dead(self, peer: str):
-        """Setzt einen Peer in den Cooldown und entfernt ihn aus den aktiven Peers."""
+        """Setzt einen Peer in den Cooldown. Verhindert das Hochzählen 
+        innerhalb der Cooldown-Zeit"""
         with self.lock:
             self.peers.discard(peer)
+            now = time.time()
             # Prüfen, ob er schon in der Penalty Box ist
             if peer in self.dead_peers:
                 timestamp, failures = self.dead_peers[peer]
-                failures += 1
+            
+                # Prüfen, ob die Cooldown-Zeit noch läuft
+                if now - timestamp < self.cooldown_seconds:
+                    # Innerhalb des Cooldowns: Ignorieren, kein Zähler-Update, kein neuer Zeitstempel!
+                    return
+                else:
+                    # Cooldown ist abgelaufen, aber er schlägt wieder fehl -> Zähler erhöhen
+                    failures += 1
             else:
+                # Erster Fehler überhaupt
                 failures = 1
-            
-            timestamp = time.time()
-            
-            # Prüfen ob endgültig rauswerfen
+
+            # Wenn max_failures erreicht sind, endgültig aus der Liste entfernen
             if failures >= self.max_failures:
                 if DEBUG:
                     print(f"[PeerManager] Peer {peer} nach {self.max_failures} Fehlern endgültig gelöscht.")
                 self.dead_peers.pop(peer, None)
-            else: # timestamp und failures updaten in dead_peers
+            else:
                 self.dead_peers[peer] = [timestamp, failures]
 
+                
     def update_peers(self, incoming_peers):
         """
         Aktualisiert die Peer-Liste von außen (z.B. nach Sync), 
@@ -85,8 +94,8 @@ class PeerManager:
 
     def _cleanup_cooldown_unlocked(self):
         """
-        Interne Methode OHNE Lock (verhindert Deadlocks).
-        Interne Methode ohne Lock (wird von anderen Methoden aufgerufen).
+        Interne Methode ohne Lock (wird von anderen bereits gelockten Methoden aufgerufen).
+        => kein Dead Lock
         """
         now = time.time()
         expired_peers = [
