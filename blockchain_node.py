@@ -5,19 +5,21 @@ import random
 import threading
 import time
 
-from flask import Flask, jsonify, request, Response
+from flask import Flask, request, Response
 import hashlib
 import json
 import os
 import socket
-import requests
 
 import peer_manager as pm
+from p2p_client import P2PClient
+
 
 app = Flask(__name__)
 
 # Globale Debug-Schalter-Konstante
 DEBUG = True
+
 
 
 # Eigene IP-Adresse einmalig beim Start ermitteln (global), bleibt dann konstant, da sich die IP-Adresse während der Laufzeit nicht ändert.
@@ -30,6 +32,10 @@ if DEBUG:
 
 # Instanziierung der PeerManager-Klasse (mit 60 Sekunden Cooldown)
 peer_manager = pm.PeerManager(my_address=MY_ADDRESS, cooldown_seconds=60)
+
+# P2PClient Instanz erzeugen (gibt ihm den peer_manager und das debug-Flag mit)
+p2p_client = P2PClient(peer_manager=peer_manager, debug=DEBUG)
+
 
 # Funktion, um zufällige Peers auszuwählen
 def choose_random_peers(n=1):
@@ -167,15 +173,12 @@ class Blockchain:
         target_peers = peer_manager.get_random_peers(count=1)  # Wähle 1 zufällige Peers aus
 
         for target_peer in target_peers:
-            try:
-                url = f'http://{target_peer}/nodes/receive_block'
-                if DEBUG:
-                    print(f"[DISTRIBUTE BLOCK] Sende an: {url}")
-                payload = block.to_dict()
-                requests.post(url, json=payload, timeout=1.5)
-            except requests.exceptions.RequestException:
-                # Knoten ist nicht erreichbar -> ignorieren
-                continue
+            url = f'http://{target_peer}/nodes/receive_block'
+            if DEBUG:
+                print(f"[DISTRIBUTE BLOCK] Sende an: {url}")
+            payload = block.to_dict()
+            p2p_client.request(target_peer, "POST", "/nodes/receive_block", json=payload, timeout=1.5)
+
 
     
     def valid_chain(self, chain):
@@ -230,32 +233,28 @@ class Blockchain:
         Fragt einen einzelnen Peer ab, validiert die Kette und ersetzt 
         die eigene bei Bedarf. Gibt True zurück, wenn ersetzt wurde, sonst False.
         """
-        try:
-            response = requests.get(f"http://{target_peer}/chain", timeout=3)
-            if response.status_code == 200:
-                data = response.json()
-                remote_length = data.get("length", 0)
-                remote_chain_data = data.get("chain", [])
-                
-                # Wenn der Peer länger ist, prüfen und ggf. ersetzen
-                if remote_length > len(self.chain):
-                    if self.valid_chain(remote_chain_data):
-                        self.chain = [
-                            Block(
-                                index=b['index'],
-                                transactions=b['transactions'],
-                                proof=b['proof'],
-                                previous_hash=b['previous_hash'],
-                                timestamp=b['timestamp']
-                            ) for b in remote_chain_data
-                        ]
-                        if DEBUG:
-                            print(f"[CHAIN SYNC] Kette von Peer {target_peer} übernommen. Neue Länge: {len(self.chain)}")
-                        return True
-        except Exception:
-            if DEBUG:
-                print(f"[CHAIN SYNC] Fehler beim Synchronisieren mit Peer {target_peer}")
-            pass
+        response = p2p_client.request(target_peer,"GET","/chain")
+        if response and response.status_code  == 200:
+            data = response.json()
+            remote_length = data.get("length", 0)
+            remote_chain_data = data.get("chain", [])
+            
+            # Wenn der Peer länger ist, prüfen und ggf. ersetzen
+            if remote_length > len(self.chain):
+                if self.valid_chain(remote_chain_data):
+                    self.chain = [
+                        Block(
+                            index=b['index'],
+                            transactions=b['transactions'],
+                            proof=b['proof'],
+                            previous_hash=b['previous_hash'],
+                            timestamp=b['timestamp']
+                        ) for b in remote_chain_data
+                    ]
+                    if DEBUG:
+                        print(f"[CHAIN SYNC] Kette von Peer {target_peer} übernommen. Neue Länge: {len(self.chain)}")
+                    return True
+
         return False
 
    
@@ -272,32 +271,23 @@ def bootstrap():
     Fragt beim Start den Bootstrap-Server ab und übergibt die Peers 
     direkt an den PeerManager (inkl. automatischer Eigen-IP-Filterung).
     """
-    port = os.environ.get("PORT", "5000")
     
     for BOOTSTRAP_URL in BOOTSTRAP_URLS:
-        target_url = f"{BOOTSTRAP_URL}/peers"
         if DEBUG:
-            print(f"[Bootstrap] Frage Bootstrap-Server an: {target_url}")
-        
-        try:
-            response = requests.get(target_url, timeout=3)
-            if response.status_code == 200:
-                data = response.json()
-                raw_peers = data.get("peers", [])
-                
-                # Der PeerManager filtert sich selbst und Penalty-Peers jetzt automatisch heraus!
-                peer_manager.update_peers(raw_peers)
-                
-                if DEBUG:
-                    for peer in raw_peers:
-                        print(f"[Bootstrap] Empfangener Peer verarbeitet: {peer}")
-                break  # Wenn ein Bootstrap-Server erfolgreich war, müssen wir nicht weitere abfragen
-            else:
-                if DEBUG:
-                    print(f"[Bootstrap] Fehler vom Server: Status {response.status_code}")
-        except Exception as e:
+            print(f"[Bootstrap] Frage Bootstrap-Server an: {BOOTSTRAP_URL}")
+
+        response = p2p_client.request(BOOTSTRAP_URL, "GET", "/peers")
+        if response and response.status_code == 200:
+            data = response.json()
+            raw_peers = data.get("peers", [])
+            
+            # Der PeerManager filtert sich selbst und Penalty-Peers jetzt automatisch heraus!
+            peer_manager.update_peers(raw_peers)
+            
             if DEBUG:
-                print(f"[Bootstrap] Konnte Bootstrap-Server nicht erreichen: {e}")
+                for peer in raw_peers:
+                    print(f"[Bootstrap] Empfangener Peer verarbeitet: {peer}")
+            break  # Wenn ein Bootstrap-Server erfolgreich war, müssen wir nicht weitere abfragen
 
     if DEBUG:
         print(f"[Bootstrap] Finale bekannte Peers: {list(peer_manager.get_all_peers())}")
@@ -350,64 +340,63 @@ def sync_peers():
     }) + "\n", 200
 
 
+import random
+import time
+
 def background_sync_loop(interval=10):
     """
-    Schickt in einem bestimmten Intervall Sekunden einen Sync-Request an zufällige Peers.
-    Dabei werden die bekannten Peers an den Peer geschickt, der dann seine bekannten Peers zurückgibt.
-    Falls der Peer nicht erreichbar ist, wird er aus der Liste entfernt.
-    Im Gegensatz zu einem Full Sweep sollten nur 1 bis 2 Peers pro Durchgang synchronisiert werden, um die Netzwerklast klein zu halten.
-    => Gossip Protokoll (dt. Klatsch, Tratsch oder Gerücht) Prinzip: Jeder Peer kennt nur einen Teil der Peers, die er dann an andere Peers weitergibt.
+    Schickt in einem bestimmten Intervall einen Sync-Request an zufällige Peers (Gossip-Protokoll).
+    Nutzt den zentralen P2PClient für robustes Fehler- und Quarantänemanagement.
     """
-
-    # Dictionary, um die Fehlversuche pro Peer mitzuzählen: { "IP:Port": fehler_anzahl }
-    peer_failure_counts = {}
-    MAX_FAILURES = 3  # Nach so vielen Versuchen in Folge fliegt er raus
-
-      # Sekunden zwischen den Syncs
-    MAX_JITTER = 3   # Sekunden, um die Intervalle zufällig zu variieren, damit nicht alle Peers gleichzeitig syncen
-
-    jitter = random.uniform(0, MAX_JITTER)  # Optional: Zufällige Verzögerung, um gleichzeitige Syncs aller peers beim Start zu vermeiden
+    MAX_JITTER = 3  # Sekunden, um gleichzeitige Syncs zu vermeiden
+    jitter = random.uniform(0, MAX_JITTER)
+    
     try:
+        # Initiale Pause mit Jitter
+        time.sleep(jitter)
+        
         while True:
-            time.sleep(interval + jitter)  # Alle INTERVAL Sekunden syncen (Test)
+            time.sleep(interval)
+            
             if not peer_manager.get_all_peers():
                 continue
 
-            target_peers = peer_manager.get_random_peers(count=1)   # Hier kann man die Anzahl der Peers anpassen, die man gleichzeitig syncen möchte (hier 1 Peer)
+            target_peers = peer_manager.get_random_peers(count=1)
                 
-            for target_peer in list(target_peers):  # Kopie der Liste, da wir sie während der Iteration ändern könnten
+            for target_peer in list(target_peers):
                 if DEBUG:
                     print(f"[BACKGROUND] Starte Sync mit {target_peer}...")
-                try:
-                    payload = {"peers": [MY_ADDRESS] + list(peer_manager.get_all_peers())}
-                    response = requests.post(f"http://{target_peer}/sync/peers", json=payload, timeout=3)
+                
+                payload = {"peers": [MY_ADDRESS] + list(peer_manager.get_all_peers())}
+                
+                # Der P2PClient übernimmt das Senden, Timeouts, 
+                # Fehlerhandling und das automatische Quarantänemangement!
+                response = p2p_client.request(
+                    target_peer, 
+                    'POST', 
+                    '/sync/peers', 
+                    json=payload
+                )
+                
+                if response and response.status_code == 200:
+                    data = response.json()
+                    remote_peers = data.get("diff_peers", [])
                     
-                    if response.status_code == 200:
-                        data = response.json()
-                        remote_peers = data.get("diff_peers", [])
-                        # Zurück-Mergen
-                        for p in remote_peers:
-                            if p not in peer_manager.get_all_peers():
-                                peer_manager.add_peer(p)
-                        if DEBUG:
-                            print(f"[BACKGROUND] Sync erfolgreich. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
-                    else:
-                        if DEBUG:
-                            print(f"[BACKGROUND] Fehler vom Peer {target_peer}: Status {response.status_code}")
-                except Exception as e:
-                    
-                    peer_failure_counts[target_peer] = peer_failure_counts.get(target_peer, 0) + 1
+                    # Peers zentral über den PeerManager aktualisieren
+                    if remote_peers:
+                        peer_manager.update_peers(remote_peers)
+                        
                     if DEBUG:
-                        print(f"[BACKGROUND] Konnte Peer {target_peer} nicht erreichen: {e} (Fehleranzahl: {peer_failure_counts[target_peer]})")
-                    if peer_failure_counts[target_peer] >= MAX_FAILURES:
-                        peer_manager.mark_peer_dead(target_peer)
-                        if DEBUG:
-                            print(f"[BACKGROUND] Peer {target_peer} nach {MAX_FAILURES} Fehlversuchen entfernt. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
+                        print(f"[BACKGROUND] Sync erfolgreich. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
+                else:
+                    if DEBUG and response:
+                        print(f"[BACKGROUND] Fehler vom Peer {target_peer}: Status {response.status_code}")
+                
             if DEBUG:
                 print(f"[BACKGROUND] Sync-Durchgang abgeschlossen. Aktuelle Peers: {list(peer_manager.get_all_peers())}")
+                
     except Exception as e:
         print(f"[BACKGROUND CRITICAL ERROR] {e}", flush=True)
-
 
 
 def background_chain_sync_loop(interval=15):
