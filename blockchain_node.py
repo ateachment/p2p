@@ -28,7 +28,7 @@ MY_PORT = 5000
 MY_ADDRESS = f"{MY_IP}:{MY_PORT}"
 
 if DEBUG:
-    print(f"[Start] Eigene IP ermittelt: {MY_IP}:{MY_PORT}")
+    print(f"[BOOT] Eigene IP ermittelt: {MY_IP}:{MY_PORT}")
 
 # Instanziierung der PeerManager-Klasse (mit 60 Sekunden Cooldown)
 peer_manager = pm.PeerManager(my_address=MY_ADDRESS, cooldown_seconds=60)
@@ -340,8 +340,6 @@ def sync_peers():
     }) + "\n", 200
 
 
-import random
-import time
 
 def background_sync_loop(interval=10):
     """

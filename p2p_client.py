@@ -30,7 +30,7 @@ class P2PClient:
             
         except Exception as e:
             if self.debug:
-                print(f"[Network] Verbindung zu {peer} fehlgeschlagen bei {endpoint}: {e}")
+                print(f"[P2PClient.request] Verbindung zu {peer} fehlgeschlagen bei {endpoint}: {e}")
             
             # Automatische Bestrafung im PeerManager
             self.peer_manager.mark_peer_dead(peer)

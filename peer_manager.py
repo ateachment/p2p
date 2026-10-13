@@ -36,9 +36,9 @@ class PeerManager:
             failures = 1
             timestamp = now
 
-            # Prüfen, ob er schon in der Penalty Box ist
+            # Prüfen, ob er schon in dead_peers war
             if peer in self.dead_peers:
-                timestamp, failures = self.dead_peers[peer]
+                _, old_failures = self.dead_peers[peer]
             
                 # Prüfen, ob die Cooldown-Zeit noch läuft
                 if now - timestamp < self.cooldown_seconds:
@@ -46,15 +46,19 @@ class PeerManager:
                     return
                 else:
                     # Cooldown ist abgelaufen, aber er schlägt wieder fehl -> Zähler erhöhen
-                    failures += 1
+                    failures = old_failures + 1
             else:
                 # Erster Fehler überhaupt
                 failures = 1
 
+            if DEBUG:
+                print(f"[PeerManager.mark_peer_dead] Peer {peer} {failures}x erfolglos aufgerufen.")
+            
+
             # Wenn max_failures erreicht sind, endgültig aus der Liste entfernen
             if failures >= self.max_failures:
                 if DEBUG:
-                    print(f"[PeerManager] Peer {peer} nach {self.max_failures} Fehlern endgültig gelöscht.")
+                    print(f"[PeerManager.mark_peer_dead] Peer {peer} nach {self.max_failures} Fehlern endgültig gelöscht.")
                 self.dead_peers.pop(peer, None)
             else:
                 self.dead_peers[peer] = [timestamp, failures]
@@ -108,8 +112,9 @@ class PeerManager:
         ]
         for peer in expired_peers:
             del self.dead_peers[peer]
-            # Optional: Direkt wieder zu den Peers hinzufügen oder auf nächsten Sync warten
-            # self.peers.add(peer)
+            self.peers.add(peer)
+            if DEBUG:
+                print(f"[PeerManager._cleanup_cooldown_unlocked] Cooldown für Peer {peer} abgelaufen. Wieder aktiv.")
 
     def reset(self):
         """Setzt alle Peers und Dead-Peers komplett zurück (für Tests)."""
