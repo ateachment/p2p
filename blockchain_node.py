@@ -11,6 +11,8 @@ import json
 import os
 import socket
 
+import requests
+
 import peer_manager as pm
 from p2p_client import P2PClient
 
@@ -48,7 +50,7 @@ def choose_random_peers(n=1):
 # Hier die URL(s) der Bootstrap-Server hardcodiert eintragen, die beim Start abgefragt werden sollen.
 # Sie werden mit versioniert, um Missbrauch zu verhindern. Die Peers können dann die bekannten Peers an andere Peers weitergeben, 
 # die diese dann in ihrer Liste aufnehmen und die dann ihre anderen Peers zurückgeben.
-BOOTSTRAP_URLS = ["localhost:5000", "bootstrap:5000", "nonExistent:5000"]  
+BOOTSTRAP_URLS = ["http://localhost:5000", "http://bootstrap:5000", "http://nonExistent:5000"] 
 
 
 class Block:
@@ -267,41 +269,37 @@ node_identifier = str(socket.gethostname())
 
 
 def bootstrap():
-    """
-    Fragt beim Start den Bootstrap-Server ab und übergibt die Peers 
-    direkt an den PeerManager (inkl. automatischer Eigen-IP-Filterung).
-    """
+    """Fragt beim Start den Bootstrap-Server ab, füllt die Peer-Liste 
+    und filtert die eigene IP-Adresse heraus."""
+    own_ip = socket.gethostbyname(socket.gethostname())
+    port = os.environ.get("PORT", "5000")
     
+    print(f"[Bootstrap] Eigene IP ermittelt: {own_ip}:{port}")
+
     for BOOTSTRAP_URL in BOOTSTRAP_URLS:
-        if DEBUG:
-            print(f"[Bootstrap] Frage Bootstrap-Server an: {BOOTSTRAP_URL}")
-
-        response = p2p_client.request(BOOTSTRAP_URL, "GET", "/peers")
-        if response and response.status_code == 200:
-            data = response.json()
-            raw_peers = data.get("peers", [])
-            
-            # Der PeerManager filtert sich selbst und Penalty-Peers jetzt automatisch heraus!
-            peer_manager.update_peers(raw_peers)
-            
-            if DEBUG:
-                for peer in raw_peers:
-                    print(f"[Bootstrap] Empfangener Peer verarbeitet: {peer}")
-            break  # Wenn ein Bootstrap-Server erfolgreich war, müssen wir nicht weitere abfragen
-
-    if DEBUG:
-        print(f"[Bootstrap] Finale bekannte Peers: {list(peer_manager.get_all_peers())}")
-
-
-def json_response(data, status=200):
-    if DEBUG:
-        # formatiert mit Einrückung, Umlauten und Zeilenumbruch für die Konsole
-        content = json.dumps(data, indent=4, ensure_ascii=False) + "\n"
-    else:
-        # kompakt für Performance/Produktion
-        content = json.dumps(data, ensure_ascii=False)
+        BOOTSTRAP_URL = f"{BOOTSTRAP_URL}/peers"
+        print(f"[Bootstrap] Frage Bootstrap-Server an: {BOOTSTRAP_URL}")
         
-    return Response(content, status, mimetype='application/json')
+        try:
+            response = requests.get(BOOTSTRAP_URL, timeout=3)
+            if response.status_code == 200:
+                data = response.json()
+                raw_peers = data.get("peers", [])
+                
+                for peer in raw_peers:
+                    # Prüfen, ob die eigene IP (mit oder ohne Port) in dem Eintrag steckt
+                    if own_ip not in peer:
+                        peer_manager.add_peer(peer)
+                        print(f"[Bootstrap] Fremden Peer hinzugefügt: {peer}")
+                    else:
+                        print(f"[Bootstrap] Eigene IP übersprungen: {peer}")
+                    
+            else:
+                print(f"[Bootstrap] Fehler vom Server: Status {response.status_code}")
+        except Exception as e:
+            print(f"[Bootstrap] Konnte Bootstrap-Server nicht erreichen: {e}")
+
+    print(f"[Bootstrap] Finale bekannte Peers: {list(peer_manager.get_all_peers())}")
 
 # --- FLASK ENDPOINTS: P2P & GOSSIP ---
 
