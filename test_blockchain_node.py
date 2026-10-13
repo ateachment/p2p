@@ -7,15 +7,10 @@ import hashlib
 import json
 import socket
 import blockchain_node
-from blockchain_node import app, blockchain
+from blockchain_node import app, blockchain, MY_ADDRESS
 import requests
 import pytest
 from unittest.mock import patch, MagicMock
-
-# Eigene IP-Adresse einmalig beim Start ermitteln (global), bleibt dann konstant, da sich die IP-Adresse während der Laufzeit nicht ändert.
-MY_IP = socket.gethostbyname(socket.gethostname())
-MY_PORT = 5000
-MY_ADDRESS = f"{MY_IP}:{MY_PORT}"
 
 
 @pytest.fixture(autouse=True)
@@ -42,6 +37,47 @@ def client():
 
 
 # Testfälle für p2p-Funktionalität
+
+@pytest.fixture
+def peer_manager():
+    """Pytest-Fixture, die einen frischen PeerManager bereitstellt."""
+    from peer_manager import PeerManager
+    return PeerManager(my_address=MY_ADDRESS)
+
+def test_bootstrap(peer_manager, monkeypatch):
+    """Testet die Bootstrap-Logik mit MagicMock für requests und Fallback-Verhalten."""
+    mock_get = MagicMock()
+
+    # Erste URL schlägt fehl (Status 500), zweite URL liefert erfolgreich Peers
+    response_fail = MagicMock()
+    response_fail.status_code = 500
+
+    response_success = MagicMock()
+    response_success.status_code = 200
+    # Wir geben absichtlich auch die eigene IP mit, um zu prüfen, ob der PeerManager sie filtert
+    response_success.json.return_value = {
+        "peers": ["192.168.1.100:5000", peer_manager.my_address]
+    }
+
+    mock_get.side_effect = [response_fail, response_success]
+
+    # Variablen im Zielmodul patchen
+    monkeypatch.setattr(requests, "get", mock_get)
+    monkeypatch.setattr(blockchain_node, "peer_manager", peer_manager)
+    monkeypatch.setattr(blockchain_node, "BOOTSTRAP_URLS", ["http://dead-server:5000", "http://good-server:5000"])
+    monkeypatch.setattr(blockchain_node, "DEBUG", False)
+
+    # Funktion ausführen
+    blockchain_node.bootstrap()
+
+    # Validierung
+    peers = peer_manager.get_all_peers()
+    assert "192.168.1.100:5000" in peers
+    assert peer_manager.my_address not in peers
+    assert len(peers) == 1
+    
+    # Prüfen, ob durch den Fallback genau zweimal angefragt wurde
+    assert mock_get.call_count == 2
 
 def test_publish_some_peer_ips():
     # Test-Client von Flask nutzen, um den Endpunkt aufzurufen

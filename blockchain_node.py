@@ -269,36 +269,29 @@ node_identifier = str(socket.gethostname())
 
 def bootstrap():
     """
-    Fragt beim Start den Bootstrap-Server ab, füllt die Peer-Liste 
-    und filtert die eigene IP-Adresse heraus.
+    Fragt beim Start den Bootstrap-Server ab und übergibt die Peers 
+    direkt an den PeerManager (inkl. automatischer Eigen-IP-Filterung).
     """
-    own_ip = socket.gethostbyname(socket.gethostname())
     port = os.environ.get("PORT", "5000")
     
-    if DEBUG:
-        print(f"[Bootstrap] Eigene IP ermittelt: {own_ip}:{port}")
-
     for BOOTSTRAP_URL in BOOTSTRAP_URLS:
-        BOOTSTRAP_URL = f"{BOOTSTRAP_URL}/peers"
+        target_url = f"{BOOTSTRAP_URL}/peers"
         if DEBUG:
-            print(f"[Bootstrap] Frage Bootstrap-Server an: {BOOTSTRAP_URL}")
+            print(f"[Bootstrap] Frage Bootstrap-Server an: {target_url}")
         
         try:
-            response = requests.get(BOOTSTRAP_URL, timeout=3)
+            response = requests.get(target_url, timeout=3)
             if response.status_code == 200:
                 data = response.json()
                 raw_peers = data.get("peers", [])
                 
-                for peer in raw_peers:
-                    # Prüfen, ob die eigene IP (mit oder ohne Port) in dem Eintrag steckt
-                    if own_ip not in peer:
-                        peer_manager.add_peer(peer)
-                        if DEBUG:
-                            print(f"[Bootstrap] Fremden Peer hinzugefügt: {peer}")
-                    else:
-                        if DEBUG:
-                            print(f"[Bootstrap] Eigene IP übersprungen: {peer}")
-
+                # Der PeerManager filtert sich selbst und Penalty-Peers jetzt automatisch heraus!
+                peer_manager.update_peers(raw_peers)
+                
+                if DEBUG:
+                    for peer in raw_peers:
+                        print(f"[Bootstrap] Empfangener Peer verarbeitet: {peer}")
+                break  # Wenn ein Bootstrap-Server erfolgreich war, müssen wir nicht weitere abfragen
             else:
                 if DEBUG:
                     print(f"[Bootstrap] Fehler vom Server: Status {response.status_code}")
