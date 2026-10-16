@@ -1,5 +1,5 @@
 import json
-from bootstrap_server import app
+from p2p_network.bootstrap_server import app
 
 def test_get_peers():
     # Test-Client des Bootstrap-Servers nutzen

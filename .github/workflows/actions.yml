@@ -32,18 +32,10 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # Untitests ausführen – bricht die Pipeline bei Fehlern ab
-      - name: Run peer_manager test script
+      # Unit-Tests mit pytest ausführen – bricht die Pipeline bei Fehlern ab
+      - name: Run unit tests with pytest
         run: |
-          python test_peer_manager.py
-
-      - name: Run bootstrap server test script
-        run: |
-          python test_bootstrap_server.py
-
-      - name: Run peer test script
-        run: |
-          python test_blockchain_node.py  
+          pytest
 
       # 6. QEMU-Emulation aktivieren (ermöglicht das Bauen für fremde Architekturen wie ARM)
       - name: Set up QEMU

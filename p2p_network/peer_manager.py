@@ -6,13 +6,13 @@ import threading
 import random
 
 class PeerManager:
-    def __init__(self, my_address, cooldown_seconds=60, max_failures=3):
+    def __init__(self, own_address, cooldown_seconds=60, max_failures=3):
         """
         Verwaltet bekannte Peers, blockiert nicht erreichbare Peers 
         (Penalty Box = dead_peers) für eine bestimmte Zeit (cooldown_seconds).
         Filtert dabei konsequent die eigene Adresse heraus.
         """
-        self.my_address = my_address
+        self.own_address = own_address
         self.peers = set()                 # Aktive, erreichbare Peers
         self.dead_peers = {}               # Dictionary: { peer_address: [timestamp_when_dead, failure_count] }
         self.cooldown_seconds = cooldown_seconds
@@ -23,7 +23,7 @@ class PeerManager:
         """Fügt einen Peer hinzu, sofern er nicht die eigene Adresse ist und nicht im Cooldown ist."""
         with self.lock:
             self._cleanup_cooldown_unlocked()
-            if peer not in self.dead_peers and peer != self.my_address:
+            if peer not in self.dead_peers and peer != self.own_address:
                 self.peers.add(peer)  # doppelter Eintag ist nicht möglich wegen set()
 
     def mark_peer_dead(self, peer: str):
@@ -38,10 +38,10 @@ class PeerManager:
 
             # Prüfen, ob er schon in dead_peers war
             if peer in self.dead_peers:
-                _, old_failures = self.dead_peers[peer]
+                old_timestamp, old_failures = self.dead_peers[peer]
             
                 # Prüfen, ob die Cooldown-Zeit noch läuft
-                if now - timestamp < self.cooldown_seconds:
+                if now - old_timestamp < self.cooldown_seconds:
                     # Innerhalb des Cooldowns: Ignorieren, kein Zähler-Update, kein neuer Zeitstempel!
                     return
                 else:
@@ -72,7 +72,7 @@ class PeerManager:
         with self.lock:
             self._cleanup_cooldown_unlocked()
             for peer in incoming_peers:
-                if peer not in self.dead_peers and peer != self.my_address:
+                if peer not in self.dead_peers and peer != self.own_address:
                     self.peers.add(peer)
 
     def get_all_peers(self) -> list:
@@ -115,9 +115,3 @@ class PeerManager:
             self.peers.add(peer)
             if DEBUG:
                 print(f"[PeerManager._cleanup_cooldown_unlocked] Cooldown für Peer {peer} abgelaufen. Wieder aktiv.")
-
-    def reset(self):
-        """Setzt alle Peers und Dead-Peers komplett zurück (für Tests)."""
-        with self.lock:
-            self.peers.clear()
-            self.dead_peers.clear()
