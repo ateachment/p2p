@@ -4,7 +4,7 @@ services:
     build: .
     image: ghcr.io/ateachment/p2p:feature-blockchain  # Container kann mit pull gestartet werden, ohne dass sie den Code selbst bauen müssen
     container_name: bootstrap
-    command: python bootstrap_server.py
+    command: python -m p2p_network.bootstrap_server
     networks:
       p2p-net:
         ipv4_address: 172.18.0.10  # Fester Anker / DNS-Seed
@@ -15,7 +15,7 @@ services:
       - PYTHONUNBUFFERED=1   # Damit die Logs in Echtzeit in der Konsole erscheinen und Ausgaben des Threads in Docker erscheinen                   
     image: ghcr.io/ateachment/p2p:feature-blockchain  # Container kann mit pull gestartet werden, ohne dass sie den Code selbst bauen müssen
     container_name: peer1
-    command: python blockchain_node.py
+    command: python -m app
     networks:
       p2p-net:
         ipv4_address: 172.18.0.2  # Fester Peer für deterministische Tests, wird vom bootstrap-Server als bekanntes Peer veröffentlicht
@@ -28,7 +28,7 @@ services:
       - PYTHONUNBUFFERED=1   # Damit die Logs in Echtzeit in der Konsole erscheinen und Ausgaben des Threads in Docker erscheinen                   
     image: ghcr.io/ateachment/p2p:feature-blockchain  # Container kann mit pull gestartet werden, ohne dass sie den Code selbst bauen müssen
     container_name: peer2
-    command: python blockchain_node.py
+    command: python -m app
     networks:
       p2p-net:
         # Keine ipv4_address -> Docker zieht sich automatisch die nächste freie IP (z.B. 172.18.0.3)
