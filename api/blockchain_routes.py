@@ -1,8 +1,11 @@
+from blockchain.core import Block
+
 from flask import Blueprint, current_app, request
 
 
 from config import DEBUG
 from p2p_network.util import json_response
+
 
 
 blockchain_api = Blueprint('blockchain_api', __name__)
@@ -26,7 +29,7 @@ def receive_block():
         return json_response({'message': 'Fehlende Block-Daten'}, status=400)
 
     # Erstelle ein Block-Objekt aus den empfangenen Daten
-    incoming_block = current_app.Block(
+    incoming_block = Block(
         index=values['index'],
         transactions=values['transactions'],
         proof=values['proof'],
