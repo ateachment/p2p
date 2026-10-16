@@ -24,7 +24,7 @@ def test_filter_own_address(peer_manager):
     peer_manager.add_peer(peer_manager.own_address)
     
     # Versuchen, sich selbst über ein Update einzuschleusen
-    peer_manager.update_peers([peer_manager.my_address, "192.168.1.20:5000"])
+    peer_manager.update_peers([peer_manager.own_address, "192.168.1.20:5000"])
     
     peers = peer_manager.get_all_peers()
     assert peer_manager.own_address not in peers
@@ -69,7 +69,7 @@ def test_update_peers_bulk(peer_manager):
     
     peers = peer_manager.get_all_peers()
     assert len(peers) == 2
-    assert peer_manager.my_address not in peers
+    assert peer_manager.own_address not in peers
     assert "192.168.1.1:5000" in peers
     assert "192.168.1.2:5000" in peers
 
